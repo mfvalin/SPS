@@ -1,0 +1,42 @@
+#!/bin/ksh
+
+set -e
+rdemklink $1
+
+#storage=$(model_path storage)
+storage=$(rdevar storage)
+BUILD=$(rdevar build)
+BUILDRUN=$(rdevar build/run)
+BUILDBIN=$(rdevar build/bin)
+
+logfile=$(pwd)/.linkit.log
+
+myln() {
+   _opt=$1
+   _src=$2
+   _dst=$3
+   ln $_opt $_src $_dst
+   echo ${TRUE_HOST:-$(hostname)}:$_src >> $logfile
+}
+
+echo ${TRUE_HOST:-$(hostname)}:$storage >> $logfile
+
+ln -sf $BUILD malib${BASE_ARCH}
+
+
+for item in sps; do
+	 absname=${item}_${BASE_ARCH}.Abs
+	 /bin/rm -f ${absname}
+	 ln -s ${BUILDBIN}/${absname} ${absname}
+	 touch ${BUILDBIN}/${absname}
+	 if [[ ! -s ${BUILDBIN}/${absname} ]] ; then
+		  abspath2=$(cd / && which ${absname})
+        if [[ x${abspath2} != x ]] ; then
+		     echo "Copying release binary: $abspath2"
+		     cp $abspath2 ${BUILDBIN}/${absname}
+        else
+           touch ${BUILDBIN}/${absname}
+        fi
+	 fi
+	 chmod 755 ${BUILDBIN}/${absname}
+done

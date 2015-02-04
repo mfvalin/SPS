@@ -1,0 +1,16 @@
+cat <<EOT >.exper_cour
+SRCPATH="
+$modelutils/src/include 
+$(pwd -P)/include 
+$(pwd -P)/src_sps_base 
+$modelutils/src/base
+$modelutils/src/driver
+$modelutils/src/main
+$modelutils/src/massvp4
+$modelutils/src/tdpack
+$modelutils/src/utils 
+$rpnphy/src/include 
+$rpnphy/src/base
+$rpnphy/src/chm_stubs
+$rpnphy/src/main"
+EOT

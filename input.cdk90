@@ -1,0 +1,703 @@
+!---------------------------------- LICENCE BEGIN -------------------------------
+! GEM - Library of kernel routines for the GEM numerical atmospheric model
+! Copyright (C) 1990-2010 - Division de Recherche en Prevision Numerique
+!                       Environnement Canada
+! This library is free software; you can redistribute it and/or modify it 
+! under the terms of the GNU Lesser General Public License as published by
+! the Free Software Foundation, version 2.1 of the License. This library is
+! distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+! without even the implied warranty of MERCHANTABILITY or FITNESS FOR A 
+! PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+! You should have received a copy of the GNU Lesser General Public License
+! along with this library; if not, write to the Free Software Foundation, Inc.,
+! 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+!---------------------------------- LICENCE END ---------------------------------
+
+!/*
+module input_mod
+   use fstmpi_mod
+   use incfg_mod
+   use input_files_mod
+   use time_interp_mod
+   use cmcdate_mod
+   use ezgrid_mod
+   use vGrid_Descriptors
+   use vgrid_wb
+   use vinterp_mod
+   implicit none
+   private
+   !@objective 
+   !@author Stephane Chamberland,2011-04
+   !@description
+   ! Public functions
+   public :: input_new, input_add, input_nbvar, input_meta, input_isvarstep, input_varindex,input_setgridid,input_getgridid,input_close_files, input_set_basedir, input_set_filename, INPUT_FILES_ANAL, INPUT_FILES_CLIM, INPUT_FILES_GEOP
+
+   public :: input_get
+   ! Public constants
+   !*/
+#include <arch_specific.hf>
+#include <rmnlib_basics.hf>
+#include <clib_interface.cdk>
+#include <msg.h>
+#include <gmm.hf>
+
+   interface input_new
+      module procedure incfg_new
+   end interface
+
+   interface input_add
+      module procedure incfg_add_string
+      module procedure incfg_add_kv
+   end interface
+
+   interface input_nbvar
+      module procedure incfg_nbvar
+   end interface
+
+   interface input_meta
+      module procedure incfg_meta
+   end interface
+
+   interface input_isvarstep
+      module procedure incfg_isvarstep
+   end interface
+
+   interface input_varindex
+      module procedure incfg_varindex
+   end interface
+
+   interface input_getgridid
+      module procedure incfg_getgridid
+   end interface
+
+   interface input_setgridid
+      module procedure incfg_setgridid
+   end interface
+
+   interface input_set_filename
+      module procedure input_files_set_name0
+      module procedure input_files_set_name1
+   end interface
+
+   interface input_set_basedir
+      module procedure input_files_set_basedir0
+      module procedure input_files_set_basedir1
+   end interface
+
+   interface input_close_files
+      module procedure input_files_close0
+      module procedure input_files_close1
+   end interface
+
+   interface input_get
+      module procedure input_get_scalar
+      module procedure input_get_vect
+      module procedure input_get3d_scalar
+      module procedure input_get3d_vect
+   end interface
+
+   integer,parameter :: NMAX_LEVELS = 9999
+
+   type :: input_var_T
+!!$      sequence
+      logical :: needonce_L
+      integer :: ni,nj,nk,hgridid,hgrididcore,vtype,datev,dateo,dt
+      integer,pointer :: ip1list(:)
+      real,pointer,dimension(:,:,:) :: d1,d2
+      character(len=INCFG_STRLEN) :: vn1_S,vn2_S,h_int_S,v_int_S,t_int_S,sfcfld_S,vgrid_S
+      type(vgrid_descriptor),pointer :: vgrid
+   end type input_var_T
+
+   logical,save :: m_allow_per_level_grid_L = .true.
+
+contains
+
+   !TODO-later: support for other array type and rank
+
+   !TODO-later: input_free...incfg_free
+
+   !/**
+   function input_get_scalar(F_id,F_index,F_step,F_hgridid,F_data,F_varname_S) result(F_istat)
+      implicit none
+      !@objective
+      !@arguments
+      integer,intent(in) :: F_id,F_index,F_step,F_hgridid
+      real,pointer :: F_data(:,:,:) 
+      character(len=*),intent(out),optional :: F_varname_S
+      !@return
+      integer :: F_istat
+      !**/
+      character(len=32) :: varname_S
+      !----------------------------------------------------------------------
+      call msg(MSG_DEBUG,'(input) get_scalar [BEGIN]')
+      F_istat = input_get3d_scalar(F_id,F_index,F_step,F_hgridid,' ',F_data,varname_S)
+      if (present(F_varname_S)) F_varname_S = varname_S
+      call msg(MSG_DEBUG,'(input) get_scalar [END]')
+      !----------------------------------------------------------------------
+      return
+   end function input_get_scalar
+
+
+   !/**
+   function input_get3d_scalar(F_id,F_index,F_step,F_hgridid,F_vgridid_S,F_data,F_varname_S) result(F_istat)
+      implicit none
+      !@objective
+      !@arguments
+      integer,intent(in) :: F_id,F_index,F_step,F_hgridid
+      character(len=*),intent(in) :: F_vgridid_S
+      real,pointer :: F_data(:,:,:) 
+      character(len=*),intent(out),optional :: F_varname_S
+      !@return
+      integer :: F_istat
+      !**/
+      character(len=32) :: varname_S,varname2_S
+      real,pointer :: data2(:,:,:) 
+      integer :: istat
+      !----------------------------------------------------------------------
+      call msg(MSG_DEBUG,'(input) get3d_scalar [BEGIN]')
+      nullify(data2)
+      F_istat = input_get3d_vect(F_id,F_index,F_step,F_hgridid,F_vgridid_S,F_data,data2,varname_S,varname2_S)
+      if (associated(data2)) then
+         call msg(MSG_WARNING,'(input) requesting vectorial field as a scalar, 2nd component ignored: '//trim(varname_S)//' : '//trim(varname2_S))
+         deallocate(data2,stat=istat)
+      endif
+      if (present(F_varname_S)) F_varname_S = varname_S
+      call msg(MSG_DEBUG,'(input) get3d_scalar [END]')
+      !----------------------------------------------------------------------
+      return
+   end function input_get3d_scalar
+
+
+   !/**
+   function input_get_vect(F_id,F_index,F_step,F_hgridid,F_data,F_data2,F_varname_S,F_varname2_S) result(F_istat)
+      implicit none
+      !@objective
+      !@arguments
+      integer,intent(in) :: F_id,F_index,F_step,F_hgridid
+      real,pointer :: F_data(:,:,:),F_data2(:,:,:)
+      character(len=*),intent(out),optional :: F_varname_S,F_varname2_S
+      !@return
+      integer :: F_istat
+      !**/
+      character(len=32) :: varname_S,varname2_S
+      !----------------------------------------------------------------------
+      call msg(MSG_DEBUG,'(input) get_vect [BEGIN]')
+      F_istat = input_get3d_vect(F_id,F_index,F_step,F_hgridid,' ',F_data,F_data2,varname_S,varname2_S)
+      if (present(F_varname_S)) F_varname_S = varname_S
+      if (present(F_varname2_S)) F_varname2_S = varname2_S
+      call msg(MSG_DEBUG,'(input) get_vect [END]')
+      !----------------------------------------------------------------------
+      return
+   end function input_get_vect
+
+
+   !/**
+   function input_get3d_vect(F_id,F_index,F_step,F_hgridid,F_vgridid_S,F_data,F_data2,F_varname_S,F_varname2_S) result(F_istat)
+      implicit none
+      !@objective
+      !@arguments
+      integer,intent(in) :: F_id,F_index,F_step,F_hgridid
+      character(len=*),intent(in) :: F_vgridid_S
+      real,pointer :: F_data(:,:,:),F_data2(:,:,:)
+      character(len=*),intent(out),optional :: F_varname_S,F_varname2_S
+      !@return
+      integer :: F_istat
+      !**/
+      character(len=INCFG_STRLEN) :: files_S(INPUT_FILES_NMAX),grtyp_S,name_S
+      integer :: istat,ii,ig1,ig2,ig3,ig4,fileidx,filetype
+      integer,target :: ip1list(NMAX_LEVELS)
+      type(vgrid_descriptor),target :: vgrid
+      type(input_var_T) :: fld,fld0
+      !----------------------------------------------------------------------
+      call msg(MSG_DEBUG,'(input) get_vect [BEGIN]')
+      F_istat = RMN_ERR
+      if (F_hgridid < 0) then
+         call msg(MSG_WARNING,'(input) invalid gridid')
+         return
+      endif
+
+      istat = incfg_meta(F_id,F_index,fld%vn1_S,fld%vn2_S,files_S, &
+           fld%h_int_S,fld%v_int_S,fld%t_int_S, &
+           F_ip1list=ip1list,F_nip1=fld%nk,F_needonce_L=fld%needonce_L)
+      if (.not.RMN_IS_OK(istat)) then
+         call msg(MSG_WARNING,'(input) Problem getting input var metadata')
+         return
+      endif
+      if (present(F_varname_S)) F_varname_S = fld%vn1_S
+      if (present(F_varname2_S)) F_varname2_S = fld%vn2_S
+
+      fld%ip1list => ip1list
+      fld%vtype = VGRID_GROUND_TYPE
+      IF_V_INT: if (fld%v_int_S /= 'none') then
+         IF_VGRID: if (F_vgridid_S == ' ') then
+            call msg(MSG_WARNING,'(input) Cannot interpolate, no dest vgrid provided for: '//trim(fld%vn1_S)//' [v_int='//trim(fld%v_int_S)//']')
+            return           
+         else
+            fld%vgrid_S = F_vgridid_S
+            nullify(fld%ip1list)
+            istat = vgrid_wb_get(F_vgridid_S,vgrid,fld%ip1list,fld%vtype,fld%sfcfld_S)
+            if (.not.RMN_IS_OK(istat)) then
+               call msg(MSG_WARNING,'(input) Problem getting vgrid meta, cannot get: '//trim(fld%vn1_S)//' [vgrid='//trim(F_vgridid_S)//']')
+               return
+            endif
+            fld%nk = 0
+            if (associated(fld%ip1list)) fld%nk = size(fld%ip1list)
+            fld%vgrid => vgrid
+         endif IF_VGRID
+      endif IF_V_INT
+      if (fld%nk < 1) then
+         call msg(MSG_WARNING,'(input) Problem getting vgrid meta, nk < 1, cannot get: '//trim(fld%vn1_S)//' [vgrid='//trim(F_vgridid_S)//']')
+         return
+      endif
+
+      istat = ezgprm(F_hgridid,grtyp_S,fld%ni,fld%nj,ig1,ig2,ig3,ig4)
+      if (.not.RMN_IS_OK(istat)) then
+         call msg(MSG_WARNING,'(input) Problem getting grid info')
+         return
+      endif
+      fld%hgridid = F_hgridid
+      fld%hgrididcore = incfg_getgridid(F_id)
+      if (fld%hgrididcore < 0) fld%hgrididcore = fld%hgridid
+
+      istat = incfg_time(F_id,F_step,fld%datev,fld%dateo,fld%dt)
+      if (.not.RMN_IS_OK(istat)) then
+         call msg(MSG_WARNING,'(input) Problem getting time info')
+         return
+      endif
+
+      nullify(fld%d1,fld%d2)
+      if (.not.associated(F_data)) then
+         allocate(F_data(fld%ni,fld%nj,fld%nk),stat=istat)
+         if (istat /= 0 .or. .not.associated(F_data)) then
+            call msg(MSG_WARNING,'(input) Problem allocating memory')
+            return
+         endif
+      endif
+      if (any(shape(F_data) /= (/fld%ni,fld%nj,fld%nk/))) then
+         call msg(MSG_WARNING,'(input) Wrong shape of provided pointer')
+         return
+      endif
+      fld%d1 => F_data
+      IF_VN2: if (fld%vn2_S /= ' ') then
+         if (.not.associated(F_data2)) then
+            allocate(F_data2(fld%ni,fld%nj,fld%nk),stat=istat)
+            if (istat /= 0 .or. .not.associated(F_data2)) then
+               call msg(MSG_WARNING,'(input) Problem allocating memory')
+               return
+            endif
+         endif
+         if (any(shape(F_data2) /= (/fld%ni,fld%nj,fld%nk/))) then
+            call msg(MSG_WARNING,'(input) Wrong shape of 2nd provided pointer')
+            return
+         endif
+         fld%d2 => F_data2
+      endif IF_VN2
+
+      ii = 0
+      DOFILES: do
+         ii = ii + 1
+         if (ii > size(files_S) .or. RMN_IS_OK(F_istat)) exit DOFILES
+         if (files_S(ii) == ' ') cycle DOFILES
+         fileidx = input_files_get_idx(F_id,files_S(ii))
+         if (.not.RMN_IS_OK(fileidx)) then
+            call msg(MSG_WARNING,'(input) Ignoring unknown file: '//trim(files_S(ii)))
+            cycle
+         endif
+         if (ii == 1) call msg(MSG_INFO,'(input) Looking for '//trim(fld%vn1_S)//' in file '//trim(files_S(ii))//' (interpolation space/time: '//trim(fld%h_int_S)//'/'//trim(fld%t_int_S)//')')
+         if (ii > 1) call msg(MSG_INFO,'(input) '//trim(fld%vn1_S)//' not found in '//trim(files_S(ii-1))//' looking in '//trim(files_S(ii)))
+         filetype = input_files_get_type(F_id,fileidx)
+         F_istat = priv_input_data(fld,F_id,fileidx,filetype)
+      enddo DOFILES
+      call msg(MSG_DEBUG,'(input) get_vect [END]')
+      !----------------------------------------------------------------------
+      return
+   end function input_get3d_vect
+
+
+   !==== Private Functions =================================================
+
+
+   !/**
+   function priv_input_data(F_fld,F_id,F_file_idx,F_filetype) result(F_istat)
+      implicit none
+      !@objective
+      !@arguments
+      type(input_var_T),intent(inout) :: F_fld
+      integer,intent(in) :: F_id,F_file_idx,F_filetype
+      !@return
+      integer :: F_istat
+      !**/
+      character(len=4) :: t_int_S
+      integer :: istat,finddatev,datev2,datev3,datevm1,datevp1,datevmp,mydatev,key,datevfuzz,t_int_type,ip1,ip2,ip2m1,ip2p1,ip2mp,find_type,trials
+      logical :: inrestart_L
+      real,pointer :: hdata(:,:,:),hdata2(:,:,:),sfcfld(:,:,:)
+      character(len=32) :: vgrid_S,sfcfld_S
+      !------------------------------------------------------------------
+      call msg(MSG_DEBUG,'(input) input_data [BEGIN]')
+      F_istat = RMN_ERR
+
+      t_int_S = F_fld%t_int_S
+      if (F_filetype == INPUT_FILES_GEOP) t_int_S = 'any '
+      datevfuzz = 0
+      call priv_clim_date(F_filetype,F_fld%datev,finddatev,datevm1,datevp1,ip2,ip2m1,ip2p1)
+      nullify(hdata,hdata2,sfcfld)
+      vgrid_S = ' '
+      sfcfld_S = ' '
+
+      select case(t_int_S(1:4))
+      case('none')
+
+         F_istat = priv_read_hinterp(F_fld,F_id,F_file_idx,ip2,finddatev,datevfuzz,FST_FIND_NEAR,hdata,hdata2,sfcfld,vgrid_S,sfcfld_S)
+         if (F_fld%v_int_S /= 'none') &
+              F_istat = min(priv_vinterp(F_fld,hdata,hdata2,sfcfld,vgrid_S),F_istat)
+
+      case('any ')
+
+         ip2 = RMN_ANY_I
+         F_istat = priv_read_hinterp(F_fld,F_id,F_file_idx,ip2,RMN_ANY_DATE,datevfuzz,FST_FIND_NEAR,hdata,hdata2,sfcfld,vgrid_S,sfcfld_S)
+         if (F_fld%v_int_S /= 'none') &
+              F_istat = min(priv_vinterp(F_fld,hdata,hdata2,sfcfld,vgrid_S),F_istat)
+         
+      case default !# line, near, step, next
+
+         datev2 = -1
+         mydatev = F_fld%datev
+         t_int_type = time_interp_typecode(t_int_S)
+         datevfuzz = huge(datevfuzz)
+         inrestart_L = .not.F_fld%needonce_L
+         find_type = FST_FIND_LE
+         if (F_filetype == INPUT_FILES_CLIM) find_type = FST_FIND_NEAR
+         datevmp = mydatev
+
+         trials = 0
+         DO_TRIALS: do
+
+            trials = trials + 1
+            F_istat = time_interp_status(F_fld%vn1_S,mydatev,t_int_type)
+            if (RMN_IS_OK(F_istat) .and. F_fld%vn2_S /= ' ') &
+                 F_istat = min(time_interp_status(F_fld%vn2_S,mydatev,t_int_type),F_istat)
+            if (RMN_IS_OK(F_istat)) exit
+
+            if (trials == 1 .and. F_istat == TIME_INTERP_NOT_FOUND) then
+               if (F_filetype /= INPUT_FILES_CLIM) find_type = FST_FIND_LE
+               ip2mp = ip2m1
+               datevmp = datevm1
+            else if (F_istat == TIME_INTERP_NEED_NEXT) then
+               if (F_filetype /= INPUT_FILES_CLIM) find_type = FST_FIND_GE
+               if (datevmp == datevp1 .and. mydatev /= datev2 .and. &
+                    any(t_int_S(1:4) == (/'near','step'/)) .and. &
+                    datev2 > 0) then
+                  mydatev = datev2
+                  cycle
+               endif
+               ip2mp = ip2p1
+               datevmp = datevp1
+            else
+               exit !# error
+            endif
+
+            if (trials > 2) exit
+
+            datev3 = priv_read_hinterp(F_fld,F_id,F_file_idx,ip2mp,finddatev,datevfuzz,find_type,hdata,hdata2,sfcfld,vgrid_S,sfcfld_S)
+            if (RMN_IS_OK(datev3)) then
+               if (F_filetype == INPUT_FILES_CLIM) datev3 = datevmp
+               istat = time_interp_set(hdata,F_fld%vn1_S,datev3,vgrid_S,sfcfld_S,inrestart_L)
+               if (F_fld%vn2_S /= ' ') &
+                    istat = time_interp_set(hdata2,F_fld%vn2_S,datev3,vgrid_S,sfcfld_S,inrestart_L)
+               if (associated(sfcfld) .and. sfcfld_S /= ' ') &
+                    istat = time_interp_set(sfcfld,sfcfld_S,datev3,inrestart_L)
+               if (datev2 < 0) datev2 = datev3
+            endif
+ 
+         enddo DO_TRIALS
+
+         IF_OK: if (RMN_IS_OK(F_istat)) then
+
+            IF_VINT: if (F_fld%v_int_S == 'none') then
+
+               F_istat = time_interp_get(F_fld%d1,F_fld%vn1_S,mydatev,t_int_type,F_fld%dt)
+               if (RMN_IS_OK(F_istat) .and. F_fld%vn2_S /= ' ') &
+                    F_istat = min(time_interp_get(F_fld%d2,F_fld%vn2_S,mydatev,t_int_type,F_fld%dt),F_istat)
+
+            else
+
+!!$               nullify(data0,data1)
+!!$               istat = time_interp_retrieve(F_fld%vn1_S,TIME_INTERP_PREVIOUS,datev0,meta,data0,vgrid0_S,sfcfld0_S)
+!!$               istat = time_interp_retrieve(F_fld%vn1_S,TIME_INTERP_NEXT,datev1,meta,data1,vgrid1_S,sfcfld1_S)
+!!$               istat = time_interp_retrieve(sfcfld0_S,TIME_INTERP_PREVIOUS,dummy,meta,sfcfld0)
+!!$               istat = time_interp_retrieve(sfcfld1_S,TIME_INTERP_NEXT,dummy,meta,sfcfld1)
+!!$               weight = time_interp_weight(t_int_type,mydatev,datev0,datev1,F_fld%dt)
+!!$               istat = priv_vinterp(,data0,dummy3d,sfcfld0,vgrid0_S)
+!!$               istat = priv_vinterp(,data1,dummy3d,sfcfld1,vgrid1_S)
+!!$               istat = time_interp_ptr(F_fld%d1,data0b,data1b,mydatev,datev0,datev1,t_int_type,F_fld%dt,F_fld%vn1_S)
+!!$               if (RMN_IS_OK(F_istat) .and. F_fld%vn2_S /= ' ') then
+!!$               endif
+
+               F_istat = RMN_ERR
+               call msg(MSG_ERROR,'(input) Vertical+Temporal intepolation not yet supported; for '//trim(F_fld%vn1_S)//' (interpolation h/v/t: '//trim(F_fld%h_int_S)//'/'//trim(F_fld%v_int_S)//'/'//trim(t_int_S)//')')
+               return
+
+            endif IF_VINT
+
+            call msg(MSG_INFO,'(input) Got time interpolated value for '//trim(F_fld%vn1_S)//' (interpolation h/v/t: '//trim(F_fld%h_int_S)//'/'//trim(F_fld%v_int_S)//'/'//trim(t_int_S)//')')
+
+         endif IF_OK
+
+      end select
+
+      call msg(MSG_DEBUG,'(input) input_data [END]')
+      !------------------------------------------------------------------
+      return
+   end function priv_input_data
+
+
+    !/**
+   subroutine priv_clim_date(F_filetype,F_datev0,F_datev,F_datevm1,F_datevp1,F_ip2,F_ip2m1,F_ip2p1)
+      implicit none
+      !@objective
+      !@arguments
+      integer,intent(in) :: F_filetype,F_datev0
+      integer,intent(out) :: F_datev,F_datevm1,F_datevp1,F_ip2,F_ip2m1,F_ip2p1
+      !**/
+      integer :: year
+      real(RDOUBLE) :: nhours_8
+      !------------------------------------------------------------------
+      F_datev = F_datev0
+      F_datevm1 = F_datev0
+      F_datevp1 = F_datev0
+      F_ip2 = RMN_ANY_I ; F_ip2m1 = RMN_ANY_I ; F_ip2p1 = RMN_ANY_I
+      if (F_filetype /= INPUT_FILES_CLIM) return
+
+      F_datev = RMN_ANY_DATE
+      F_ip2 = cmcdate_month(F_datev0)
+      F_ip2m1 = F_ip2
+      year = cmcdate_year(F_datev0)
+      F_datevm1 = cmcdate_midmonth(year,F_ip2m1)
+      call difdatr(F_datev0,F_datevm1,nhours_8)
+      if (nhours_8 < 0.d0) then
+         F_ip2m1 = F_ip2 - 1
+         if (F_ip2m1 < 1) then
+            F_ip2m1 = F_ip2m1 + 12
+            year = year - 1
+         endif
+         F_datevm1 = cmcdate_midmonth(year,F_ip2m1)
+      endif
+      F_ip2p1 = F_ip2m1 + 1
+      if (F_ip2p1 > 12) then
+         F_ip2p1 = F_ip2p1 - 12
+         year = year + 1
+      endif
+      F_datevp1 = cmcdate_midmonth(year,F_ip2p1)
+      !------------------------------------------------------------------
+      return
+   end subroutine priv_clim_date
+
+
+   !/**
+   function priv_read_hinterp(F_fld,F_id,F_file_idx,F_ip2,F_datev,F_datevfuzz,F_fuzztype,F_hdata,F_hdata2,F_sfcfld,F_vgrid_S,F_sfcfld_S) result(F_istat)
+      implicit none
+      !@objective
+      !@arguments
+      type(input_var_T),intent(inout) :: F_fld
+      integer,intent(in) :: F_id,F_file_idx,F_ip2,F_datev,F_datevfuzz,F_fuzztype
+      real,pointer :: F_hdata(:,:,:),F_hdata2(:,:,:),F_sfcfld(:,:,:)
+      character(len=*),intent(out) :: F_vgrid_S,F_sfcfld_S
+      !@return
+      integer :: F_istat
+      !**/
+      real,parameter :: MB2PA = 100.
+      character(len=5),parameter :: HINT_TYPE_S = 'CUBIC'
+      integer :: datevfuzz,fuzztype,ingridid,datev2,ip1,ip2,istat,istat2,k,nk,vtype,lij(3),uij(3)
+      integer,pointer :: ip1list(:)
+      real,pointer :: indata(:,:,:),indata2(:,:,:)
+      type(vgrid_descriptor) :: vgrid
+      !------------------------------------------------------------------
+      call msg(MSG_DEBUG,'(input) read_interp [BEGIN]')
+      F_istat = RMN_ERR
+      if (F_fld%nk > size(F_fld%d1,3)) then
+         call msg(MSG_WARNING,'(input) Too many requested levels for allocated space')
+         return
+      endif
+
+      datevfuzz = F_datevfuzz
+      fuzztype = F_fuzztype
+      ingridid = -1
+      datev2 = F_datev
+
+      nk = F_fld%nk
+      ip1list => F_fld%ip1list
+      F_vgrid_S = ' '
+      F_sfcfld_S = ' '
+      F_hdata => F_fld%d1
+      nullify(F_hdata2,F_sfcfld,indata,indata2)
+      if (associated(F_fld%d2)) F_hdata2 => F_fld%d2
+      IF_VINT: if (F_fld%v_int_S /= 'none') then
+         istat = input_files_vgrid(F_id,F_file_idx,F_fld%vn1_S,F_ip2,datev2,F_vgrid_S,indata,ingridid)
+         if (RMN_IS_OK(istat)) then
+            nullify(ip1list)
+            istat = vgrid_wb_get(F_vgrid_S,vgrid,ip1list,vtype,F_sfcfld_S)
+         endif
+         call collect_error(istat)
+         if (.not.RMN_IS_OK(istat)) then
+            call msg(MSG_WARNING,'(input) Probleme getting vgrid for '//trim(F_fld%vn1_S)//' '//trim(F_fld%vn2_S))
+            return
+         endif
+         nk = size(ip1list)
+         lij(:) = lbound(F_fld%d1) ; uij = ubound(F_fld%d1)
+         allocate(F_hdata(lij(1):uij(1),lij(2):uij(2),nk),stat=istat)
+         if (associated(F_fld%d2)) &
+              allocate(F_hdata2(lij(1):uij(1),lij(2):uij(2),nk),stat=istat)
+         IF_RFLD: if (associated(indata)) then
+            allocate(F_sfcfld(lij(1):uij(1),lij(2):uij(2),1),stat=istat)
+            istat = priv_hinterp(F_sfcfld,indata2,indata,indata2,1,ingridid,F_fld%hgridid,F_fld%hgrididcore,'cubic','vRFLD',' ')
+            deallocate(indata,stat=istat2)
+            if (.not.RMN_IS_OK(istat)) then
+               call msg(MSG_WARNING,'(input) Probleme interpolating sfc ref field for '//trim(F_fld%vn1_S)//' '//trim(F_fld%vn2_S))
+               nullify(F_sfcfld)
+               return
+            endif
+            !# Hack to transform P0 from mb to Pa
+            if (any(F_sfcfld_S == (/'P0','p0'/))) then
+               F_sfcfld = F_sfcfld * MB2PA
+            endif
+         endif IF_RFLD
+      endif IF_VINT
+
+      nullify(indata,indata2)
+      DO_LEVELS: do k=1,nk
+         F_istat = RMN_ERR
+         ip2 = F_ip2
+         ip1 = ip1list(k)
+         istat = input_files_read(F_id,F_file_idx,F_fld%vn1_S,ip1,ip2,datev2,datevfuzz,fuzztype,ingridid,indata)
+         datevfuzz = 0
+         fuzztype = FST_FIND_NEAR
+         if (F_fld%vn2_S /= ' ') then
+            istat = min(input_files_read(F_id,F_file_idx,F_fld%vn2_S,ip1,ip2,datev2,datevfuzz,fuzztype,ingridid,indata2),istat)
+         endif
+         call collect_error(istat)
+         if (.not.RMN_IS_OK(istat)) exit
+         istat = priv_hinterp(F_hdata,F_hdata2,indata,indata2,k,ingridid,F_fld%hgridid,F_fld%hgrididcore,F_fld%h_int_S,F_fld%vn1_S,F_fld%vn2_S)
+         call collect_error(istat)
+         if (.not.RMN_IS_OK(istat)) then
+            call msg(MSG_WARNING,'(input) Probleme interpolating '//trim(F_fld%vn1_S)//' '//trim(F_fld%vn2_S))
+            exit
+         endif
+         if (m_allow_per_level_grid_L) then
+            ingridid = -1
+            if (associated(indata)) deallocate(indata,stat=istat)
+            if (associated(indata2)) deallocate(indata2,stat=istat)
+         endif
+         F_istat = max(0,datev2)
+      enddo DO_LEVELS
+      if (associated(indata)) deallocate(indata,stat=istat)
+      if (associated(indata2)) deallocate(indata2,stat=istat)
+      call msg(MSG_DEBUG,'(input) read_interp [END]')
+      !----------------------------------------------------------------------
+      return
+   end function priv_read_hinterp
+
+
+   !/**
+   function priv_hinterp(F_outdata,F_outdata2,F_indata,F_indata2,F_k,F_ingridid,F_outgridid,F_coregridid,F_h_int_S,F_varname_S,F_varname2_S) result(F_istat)
+      implicit none
+      !@objective
+      !@arguments
+      real,dimension(:,:,:),pointer :: F_outdata,F_outdata2,F_indata,F_indata2
+      integer,intent(in) :: F_k,F_ingridid,F_outgridid,F_coregridid
+      character(len=*),intent(in) :: F_h_int_S,F_varname_S,F_varname2_S
+      !@return
+      integer :: F_istat
+      !**/
+      integer,save :: gridsetid=-1,outgridid=-1,ingridid=-1,subgridid=-1
+      character(len=16),save :: h_int_S = ' '
+      character(len=16),save :: onesubgrid_S = 'NO'
+      integer :: istat
+      !------------------------------------------------------------------
+      call msg(MSG_DEBUG,'(input) hinterp [BEGIN]')
+      F_istat = RMN_ERR
+      if (F_outgridid /= outgridid .or. F_ingridid /= ingridid .or. gridsetid < 0 .or. m_allow_per_level_grid_L) then
+         gridsetid = ezdefset(F_outgridid, F_ingridid)
+         if (gridsetid < 0) then
+            call msg(MSG_WARNING,'(input) Unable to set an interpolation gridset for: '//trim(F_varname_S))
+            return
+         endif
+         ingridid = F_ingridid
+         outgridid = F_outgridid
+
+         onesubgrid_S='NO'
+         subgridid=-1
+         h_int_S = F_h_int_S
+         subgridid = ezgrid_subcolocated(ingridid, F_coregridid)
+         if (subgridid >= 0)  then
+            h_int_S = 'nearest'
+            onesubgrid_S = 'YES'
+            istat = ezsetival('SUBGRIDID',subgridid)
+         endif
+         istat = ezsetopt('INTERP_DEGREE',trim(h_int_S))
+         istat = min(ezsetopt('USE_1SUBGRID',trim(onesubgrid_S)),istat)
+         if (.not.RMN_IS_OK(istat)) then
+            call msg(MSG_WARNING,'(input) Unable to set INTERP_DEGREE for: '//trim(F_varname_S)//' '//trim(F_varname2_S))
+!!$            return
+         endif
+      endif
+      if (h_int_S(1:4) == 'near') &
+           call msg(MSG_INFO,'(input) No/Nearest horizontal interpolation for: '//trim(F_varname_S )//' '//trim(F_varname2_S ))
+      if (F_varname2_S == ' ') then
+         F_istat = ezsint(F_outdata(:,:,F_k),F_indata)
+      else
+         F_istat = ezuvint(F_outdata(:,:,F_k),F_outdata2(:,:,F_k),F_indata,F_indata2)
+      endif
+      call msg(MSG_DEBUG,'(input) hinterp [END]')
+      !------------------------------------------------------------------
+      return
+   end function priv_hinterp
+
+
+   !/**
+   function priv_vinterp(F_fld,F_hdata,F_hdata2,F_sfcfld,F_vgrid_S) result(F_istat)
+      implicit none
+      !@objective
+      !@arguments
+      type(input_var_T),intent(inout) :: F_fld
+      real,pointer :: F_hdata(:,:,:),F_hdata2(:,:,:),F_sfcfld(:,:,:)
+      character(len=*),intent(in) :: F_vgrid_S
+      !@return
+      integer :: F_istat
+      !**/
+      integer :: nlinbot
+      integer :: istat
+      type(vgrid_descriptor) :: src_vgrid
+      real,pointer :: sfcfld(:,:)
+      !------------------------------------------------------------------
+      call msg(MSG_DEBUG,'(input) vinterp [BEGIN]')
+      F_istat = RMN_ERR
+      if (.not.(associated(F_fld%d1) .and. associated(F_hdata))) return
+      if (associated(F_fld%d2) .and..not.associated(F_hdata2)) return
+
+      if (F_fld%v_int_S == 'none') then
+         if (.not.all(shape(F_fld%d1) == shape(F_hdata))) return
+         F_fld%d1 = F_hdata
+         if (associated(F_fld%d2)) then
+            if (.not.all(shape(F_fld%d2) == shape(F_hdata2))) return
+            F_fld%d2 = F_hdata2
+         endif
+         F_istat = RMN_OK
+         return
+      endif
+
+      nlinbot = 0
+      if (F_fld%v_int_S(1:4) == 'line') nlinbot = size(F_fld%d1,3)
+
+      sfcfld => F_sfcfld(:,:,1)
+      F_istat = vinterp(F_fld%d1,F_fld%vgrid_S,F_hdata,F_vgrid_S,F_sfcfldin=sfcfld,F_nlinbot=nlinbot,F_msg_S=F_fld%vn1_S)
+      if (F_fld%vn2_S /= ' ' .and. associated(F_hdata2)) &
+           F_istat = vinterp(F_fld%d2,F_fld%vgrid_S,F_hdata2,F_vgrid_S,F_sfcfldin=sfcfld,F_nlinbot=nlinbot,F_msg_S=F_fld%vn2_S)
+
+      call msg(MSG_DEBUG,'(input) vinterp [END]')
+      !------------------------------------------------------------------
+      return
+   end function priv_vinterp
+
+
+end module input_mod
+

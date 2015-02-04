@@ -1,0 +1,131 @@
+#!/bin/ksh
+
+myself=$0
+myname=$(echo ${myself##*_} | tr a-z A-Z)
+DESC="Open a new experiemnt (Etagere) with pre-set RCSPATH / SRCPATH for $myname"
+
+USAGE="USAGE: ${myself##*/} [-h] [-v] [-n]\\ \n
+       \t [--all] \\ \n
+       \t [--dyn] \\ \n
+       \t [--phy] \\ \n
+       \t [--utils] \\ \n
+       \t [--dry-run]"
+
+#---- Functions ------------------------------------------------------
+#====
+usage_long() {
+         toto=$(echo -e $USAGE)
+         more <<EOF
+$DESC
+
+$toto
+
+Options:
+    -h, --help : print this help
+    -n, --dry-run : only print the ouv_exp cmd, not runnig it
+    -v, --verbose : 
+
+    --all      : [default] add all components to RCS/SRCPATH
+    --dyn      : add $myname dyn to RCS/SRCPATH
+    --phy      : add rpnphy and class to RCS/SRCPATH
+    --utils    : add modelutils and tdpack to RCS/SRCPATH
+
+EOF
+}
+
+myall=0
+mydyn=0
+myphy=0
+myutils=0
+myverbose=0
+mydry=0
+while [[ $# -gt 0 ]] ; do
+    case $1 in
+        (-h|--help) usage_long; exit 0;;
+        (-n|--dry-run) mydry=1 ;;
+        (-v|--verbose) myverbose=1 ;;
+        (--all) myall=1 ;;
+        (--dyn) mydyn=1 ;;
+        (--phy) myphy=1 ;;
+        (--utils) myutils=1 ;;
+        (-*|*) echo "ERROR: Unrecognized option $1"
+            echo -e $USAGE
+            echo "---- ABORT ----"
+            exit 1;;
+    esac
+    shift
+done
+
+let mysum=myall+mydyn+myphy+myutils
+if [[ x$mysum == x0 ]] ; then
+	 myall=1
+fi
+
+if [[ x$myall = x1 ]] ; then
+         mydyn=1
+         myphy=1
+         myutils=1
+fi
+
+if [[ x$modelutils == x || ! -d $modelutils/src ]] ; then
+	 cat <<EOF
+ERROR: \$modelutils not defined or \$modelutils/src does not exists
+       Cannot setup the experiment diretory
+
+       Please make sure you loaded the full $myname development environment
+---- ABORT ----
+EOF
+	 exit 1
+fi
+
+add_src_path() {
+   _srcbase=$1
+   _srclist=""
+   for item in $(ls -d ${_srcbase}/* | grep -vi include | grep -vi Makefile | grep -vi __) ; do
+      if [[ -d $item ]] ; then
+         _srclist="${_srclist} $item"
+      fi
+   done
+   echo ${_srclist} | tr ' ' '\n'
+}
+
+SRCPATH="$modelutils/src/include"
+
+
+if [[ x$mydyn == x1 ]] ; then
+ 	#SRCPATH="$SRCPATH $sps/src/include $(add_src_path $sps/src)"
+ 	SRCPATH="$SRCPATH $sps/src/include"
+fi
+
+if [[ x$myutils == x1 ]] ; then
+	 SRCPATH="$SRCPATH $(add_src_path $modelutils/src | grep -vi massvp7_wrap)"
+fi
+
+if [[ x$myphy == x1 ]] ; then
+	 SRCPATH="$SRCPATH $rpnphy/src/include $(add_src_path $rpnphy/src | grep -vi class)"
+fi
+
+myecho=''
+if [[ x$mydry == x1 ]] ; then
+	 myecho=echo
+else
+	 set -x
+    if [[ ! -r .ssmuse_model ]] ; then
+       cat > .ssmuse_model <<EOF
+. s.ssmuse.dot $ATM_MODEL_BNDL
+. s.ssmuse.dot dot
+export PATH=.:$(pwd)/bin:\$PATH
+EOF
+    fi
+fi
+
+if [[ x$mydry == x1 ]] ; then
+   echo
+   cat <<EOF
+echo SRCPATH=\"$SRCPATH\" >> .exper_cour
+EOF
+else
+   cat >>.exper_cour <<EOF
+SRCPATH="$SRCPATH"
+EOF
+fi

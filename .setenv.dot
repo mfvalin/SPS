@@ -1,0 +1,13 @@
+#!/bin/ksh
+[[ -z $COMP_ARCH ]] && echo ERROR: COMP_ARCH is not defined && return
+echo "USING: COMP_ARCH=$COMP_ARCH"
+
+if [[ -f .setenv_${COMP_ARCH}.dot ]] ; then
+   echo "sourcing .setenv_${COMP_ARCH}.dot"
+   . .setenv_${COMP_ARCH}.dot
+fi
+export sps=$(pwd)
+export PATH=$(pwd)/bin:$PATH
+export SSMVERSION=$(ssm version | cut -d. -f1)
+
+[[ -f .exper_cour ]] || . ./.exper_cour.dot

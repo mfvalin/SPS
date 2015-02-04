@@ -1,0 +1,460 @@
+!-------------------------------------- LICENCE BEGIN -------------------------
+!Environment Canada - Atmospheric Science and Technology License/Disclaimer, 
+!                     version 3; Last Modified: May 7, 2008.
+!This is free but copyrighted software; you can use/redistribute/modify it under the terms 
+!of the Environment Canada - Atmospheric Science and Technology License/Disclaimer 
+!version 3 or (at your option) any later version that should be found at: 
+!http://collaboration.cmc.ec.gc.ca/science/rpn.comm/license.html 
+!
+!This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+!without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+!See the above mentioned License/Disclaimer for more details.
+!You should have received a copy of the License/Disclaimer along with this software; 
+!if not, you can write to: EC-RPN COMM Group, 2121 TransCanada, suite 500, Dorval (Quebec), 
+!CANADA, H9P 1J3; or send e-mail to service.rpn@ec.gc.ca
+!-------------------------------------- LICENCE END ---------------------------
+
+
+!/*
+module vgrid_wb
+   use vGrid_Descriptors
+   implicit none
+   private
+   !@objective Whiteboard (data store) for vgrid + ip1 <=> index association
+   !@author Stephane Chamberland, 2012-01
+   !@description
+   ! Public functions
+   public :: vgrid_wb_exists, vgrid_wb_put, vgrid_wb_get, vgrid_wb_bcast
+   ! Public constants
+   !TODO-FR: (feature request) include these in the vGrid_Descriptors module
+   integer,parameter,public :: VGRID_SIGM_KIND = 1 !Sigma
+   integer,parameter,public :: VGRID_SIGM_VER  = 1
+
+   integer,parameter,public :: VGRID_ETA_KIND = 1 !Eta
+   integer,parameter,public :: VGRID_ETA_VER  = 2
+
+   integer,parameter,public :: VGRID_HYBN_KIND = 1 !Hybrid Normalized
+   integer,parameter,public :: VGRID_HYBN_VER  = 3
+
+   integer,parameter,public :: VGRID_PRES_KIND = 2 !pressure
+   integer,parameter,public :: VGRID_PRES_VER  = 1
+
+   integer,parameter,public :: VGRID_HYB_KIND = 5 !Hybrid Un-staggered
+   integer,parameter,public :: VGRID_HYB_VER  = 1
+
+   integer,parameter,public :: VGRID_HYBS_KIND = 5 !Hybrid staggered
+   integer,parameter,public :: VGRID_HYBS_VER  = 2
+
+   integer,parameter,public :: VGRID_HYBT_KIND = 5 !Hybrid staggered with unstaggered last Thermo level 
+   integer,parameter,public :: VGRID_HYBT_VER  = 3
+
+   integer,parameter,public :: VGRID_GROUND_TYPE = -1
+   integer,parameter,public :: VGRID_SURF_TYPE  = 0
+   integer,parameter,public :: VGRID_UPAIR_TYPE = 1
+   integer,parameter,public :: VGRID_UPAIR_M_TYPE = 1
+   integer,parameter,public :: VGRID_UPAIR_T_TYPE = 2
+
+   character(len=6),parameter,public :: VGRID_TYPES_S(-1:2) = &
+        (/'Ground','Surf  ','UpAir ','UpAirT'/)
+
+!*/
+#include <arch_specific.hf>
+#include <rmnlib_basics.hf>
+#include <WhiteBoard.hf>
+#include <msg.h>
+   include "rpn_comm.inc"
+
+   type :: vgrid_wb_T
+      character(len=WB_MAXNAMELENGTH) :: name_S,sfcfld_S
+      type(vgrid_descriptor) :: vgrid
+      integer,pointer :: ip1(:)
+      integer :: itype
+   end type vgrid_wb_T
+
+   character(len=*),parameter :: PREFIX_S = 'VGWB/'
+   integer,parameter :: MAXVGRIDS = 256
+
+   integer,save :: m_nvgrids = 0
+   type(vgrid_wb_T),pointer,save :: m_vgrids(:) => null()
+
+   interface vgrid_wb_put
+      module procedure vgrid_wb_put_i
+      module procedure vgrid_wb_put_v
+   end interface
+
+   interface vgrid_wb_get
+      module procedure vgrid_wb_get_i
+      module procedure vgrid_wb_get_s
+   end interface
+
+   interface vgrid_wb_bcast
+      module procedure vgrid_wb_bcast_v
+      module procedure vgrid_wb_bcast_s
+   end interface
+
+
+contains
+
+   !/**
+   function vgrid_wb_exists(F_name_S) result(F_istat)
+      implicit none
+      !@objective Check if F_name_S is already in use
+      !@arguments
+      character(len=*),intent(in) :: F_name_S !- Key (internal var name)
+      !@return
+      integer :: F_istat
+      !@author  S. Chamberland, 2012-05
+      !**/
+      integer :: vgrid_idx,iverb
+      !---------------------------------------------------------------------
+      iverb = wb_verbosity(WB_MSG_FATAL)
+      F_istat = wb_get(trim(PREFIX_S)//trim(F_name_S),vgrid_idx)
+      if (iverb > 0) iverb = wb_verbosity(iverb)
+      !---------------------------------------------------------------------
+      return
+   end function vgrid_wb_exists
+
+
+   !/**
+   function vgrid_wb_put_i(F_name_S,F_type,F_ip1list) result(F_id)
+      implicit none
+      !@objective Store a new vgrid
+      !@arguments
+      character(len=*),intent(in) :: F_name_S !- Key (internal var name)
+      integer,intent(in) :: F_type
+      integer,pointer :: F_ip1list(:)               !- list of ip1
+      !@return
+      integer :: F_id !- vgrid id or RMN_ERR
+      !@author  S. Chamberland, 2012-01
+      !**/
+      integer :: istat,nvgrids,lip1,uip1
+      character(len=256) :: msg_S
+      !---------------------------------------------------------------------
+      call priv_init()
+      F_id = RMN_ERR
+      if (.not.associated(m_vgrids)) return
+      if (m_nvgrids >= MAXVGRIDS) then
+         call msg(MSG_ERROR,'(vgrid_wb_put) too many vgrid')
+         return
+      endif
+      if (len_trim(F_name_S) == 0) then
+         call msg(MSG_ERROR,'(vgrid_wb_put) need to provide a internal name')
+         return
+      endif
+      if (len_trim(PREFIX_S)+len_trim(F_name_S) > WB_MAXNAMELENGTH) then
+         call msg(MSG_WARNING,'(vgrid_wb_put) name too long, will be trimed: '//trim(F_name_S))
+      endif
+      istat = vgrid_wb_exists(F_name_S)
+      if (RMN_IS_OK(istat)) then
+         call msg(MSG_ERROR,'(vgrid_wb_put) vgrid already exists: '//trim(F_name_S))
+         return
+      endif
+      if (.not.any(F_type == (/VGRID_GROUND_TYPE,VGRID_SURF_TYPE,VGRID_UPAIR_TYPE,VGRID_UPAIR_M_TYPE,VGRID_UPAIR_T_TYPE/))) then
+         call msg(MSG_ERROR,'(vgrid_wb_put) invalid vgrid_wb type: '//trim(F_name_S))
+         return
+      endif
+
+      nvgrids = m_nvgrids+1
+      lip1 = lbound(F_ip1list,1)
+      uip1 = ubound(F_ip1list,1)
+      allocate(m_vgrids(nvgrids)%ip1(lip1:uip1),stat=istat)
+      if (istat /= 0 .or. .not.associated(m_vgrids(nvgrids)%ip1)) then
+         call msg(MSG_ERROR,'(vgrid_wb_put) cannot allocate mem for ip1list: '//trim(F_name_S))
+         return
+      endif
+      istat = wb_put(trim(PREFIX_S)//trim(F_name_S),nvgrids)
+      if (.not.RMN_IS_OK(istat)) then
+         call msg(MSG_ERROR,'(vgrid_wb_put) problem storing the index: '//trim(F_name_S))
+         return
+      endif
+      m_nvgrids = nvgrids
+      m_vgrids(nvgrids)%ip1(lip1:uip1) = F_ip1list(lip1:uip1)
+      m_vgrids(nvgrids)%name_S = F_name_S
+      m_vgrids(nvgrids)%itype = min(max(VGRID_GROUND_TYPE,F_type),VGRID_UPAIR_T_TYPE)
+      F_id = nvgrids
+      write(msg_S,'(a," [type=",a,"] ip1[",i4,":",i4,"] = (",i12,", ...,",i12,") id=",i4)') m_vgrids(nvgrids)%name_S(1:16),VGRID_TYPES_S(m_vgrids(nvgrids)%itype),lip1,uip1,F_ip1list(lip1),F_ip1list(uip1),F_id
+      call msg(MSG_INFO,'(vgrid_wb) Put: '//trim(msg_S))
+      !---------------------------------------------------------------------
+      return
+   end function vgrid_wb_put_i
+
+
+   !/**
+   function vgrid_wb_put_v(F_name_S,F_vgrid,F_ip1list,F_sfcfld_S) result(F_id)
+      implicit none
+      !@objective Store a new vgrid
+      !@arguments
+      character(len=*),intent(in) :: F_name_S !- Key (internal var name)
+      type(vgrid_descriptor),intent(in) :: F_vgrid  !- 
+      integer,pointer :: F_ip1list(:)               !- list of ip1
+      character(len=*),intent(in),optional :: F_sfcfld_S !- Name of ref sfc fields for levels computations
+      !@return
+      integer :: F_id !- vgrid id or RMN_ERR
+      !@author  S. Chamberland, 2012-01
+      !**/
+      character(len=WB_MAXNAMELENGTH) :: sfcfld_S 
+      integer :: istat,istat2
+      real*8,pointer :: vtbl(:,:,:)
+      !---------------------------------------------------------------------
+      F_id = vgrid_wb_put_i(F_name_S,VGRID_UPAIR_TYPE,F_ip1list)
+      if (.not.RMN_IS_OK(F_id)) return
+
+!!$      istat = priv_check_consis(F_vgrid,F_ip1list)
+!!$      if (.not.RMN_IS_OK(istat)) then
+!!$         F_id = RMN_ERR
+!!$         call msg(MSG_ERROR,'(vgrid_wb_put) vgrid and ip1 list not consitant: '//trim(F_name_S))
+!!$         return
+!!$      endif
+
+      m_vgrids(F_id)%vgrid = F_vgrid !TODO-FR: Better to do a deep copy
+!!$      nullify(vtbl)
+!!$      istat = vgd_get(F_vgrid,key='VTBL',value=vtbl,quiet=.true.)
+!!$      if (istat == VGD_OK) istat = vgd_new(m_vgrids(F_id)%vgrid,vtbl)
+!!$      deallocate(vtbl,stat=istat2)
+!!$      if (istat /= VGD_OK) then
+!!$         call msg(MSG_ERROR,'(vgrid_wb_put) problem cloning vgrid for: '//trim(F_name_S))
+!!$         F_id = RMN_ERR
+!!$         return
+!!$      endif
+
+      m_vgrids(F_id)%sfcfld_S = ' '
+      istat = vgd_get(F_vgrid,key='RFLD',value=sfcfld_S,quiet=.true.)
+      if (istat == VGD_OK) then
+         m_vgrids(F_id)%sfcfld_S = sfcfld_S
+         if (present(F_sfcfld_S)) m_vgrids(F_id)%sfcfld_S = F_sfcfld_S
+      endif
+      !---------------------------------------------------------------------
+      return
+   end function vgrid_wb_put_v
+
+
+   !/**
+   function vgrid_wb_get_s(F_name_S,F_vgrid,F_ip1list,F_type,F_sfcfld_S) result(F_istat)
+      implicit none
+      !@objective Retreive stored vgrid
+      !@arguments
+      character(len=*),intent(in) :: F_name_S !- Key (internal var name)
+      type(vgrid_descriptor),intent(out) :: F_vgrid    !- vgrid struct
+      integer,pointer,optional :: F_ip1list(:)         !- list of ip1
+      integer,intent(out),optional :: F_type
+      character(len=*),intent(out),optional :: F_sfcfld_S !- Name of ref sfc fields for levels computations
+      !@return
+      integer :: F_istat !- exit status
+      !@author  S. Chamberland, 2012-01
+      !**/
+      integer :: vgrid_idx,istat,nip1,lip1,uip1,itype
+      character(len=WB_MAXNAMELENGTH) :: sfcfld_S
+      !---------------------------------------------------------------------
+      F_istat = RMN_ERR
+      istat = wb_get(trim(PREFIX_S)//trim(F_name_S),vgrid_idx)
+      if (.not.RMN_IS_OK(istat)) then
+         call msg(MSG_INFOPLUS,'(vgrid_wb_get) vgrid not found: '//trim(F_name_S))
+         return
+      endif
+      if (present(F_ip1list)) then
+         F_istat = vgrid_wb_get_i(vgrid_idx,F_vgrid,F_ip1list,F_type=itype,F_sfcfld_S=sfcfld_S,F_name_S=F_name_S)
+      else
+         F_istat = vgrid_wb_get_i(vgrid_idx,F_vgrid,F_type=itype,F_sfcfld_S=sfcfld_S,F_name_S=F_name_S)
+      endif
+      if (present(F_type)) F_type = itype
+      if (present(F_sfcfld_S)) F_sfcfld_S = sfcfld_S
+      !---------------------------------------------------------------------
+      return
+   end function vgrid_wb_get_s
+
+
+   !/**
+   function vgrid_wb_get_i(F_id,F_vgrid,F_ip1list,F_type,F_sfcfld_S,F_name_S) result(F_istat)
+      implicit none
+      !@objective Retreive stored vgrid
+      !@arguments
+      integer,intent(in) :: F_id !- vgrid id returned by vgrid_wb_put
+      type(vgrid_descriptor),intent(out) :: F_vgrid    !- vgrid struct
+      integer,pointer,optional :: F_ip1list(:)         !- list of ip1
+      integer,intent(out),optional :: F_type
+      character(len=*),intent(out),optional :: F_sfcfld_S !- Name of ref sfc fields for levels computations
+      character(len=*),intent(in),optional :: F_name_S !- Key (internal var name)
+      !@return
+      integer :: F_istat !- exit status
+      !@author  S. Chamberland, 2012-01
+      !**/
+      character(len=WB_MAXNAMELENGTH) :: name_S
+      integer :: istat,istat2,nip1,lip1,uip1
+      real*8,pointer :: vtbl(:,:,:)
+      !---------------------------------------------------------------------
+      F_istat = RMN_ERR
+      write(name_S,'(a,i3.3)') ' id=',F_id
+      if (present(F_name_S)) name_S = trim(F_name_S)//trim(name_S)
+      if (F_id < 1 .or. F_id > m_nvgrids) then
+         call msg(MSG_WARNING,'(vgrid_wb_get) vgrid id out of range: '//trim(name_S))
+         return
+      endif
+
+      F_vgrid = m_vgrids(F_id)%vgrid !TODO-FR: Better to do a deep copy
+!!$      nullify(vtbl)
+!!$      istat = vgd_get(m_vgrids(F_id)%vgrid,key='VTBL',value=vtbl,quiet=.true.)
+!!$      if (istat == VGD_OK) istat = vgd_new(F_vgrid,vtbl)
+!!$      deallocate(vtbl,stat=istat2)
+!!$      if (istat /= VGD_OK) then
+!!$         call msg(MSG_ERROR,'(vgrid_wb_get) problem cloning vgrid for: '//trim(F_name_S))
+!!$         return
+!!$      endif
+
+      nip1 = size(m_vgrids(F_id)%ip1)
+      lip1 = lbound(m_vgrids(F_id)%ip1,1)
+      uip1 = ubound(m_vgrids(F_id)%ip1,1)
+      if (present(F_ip1list)) then
+         if (.not.associated(F_ip1list)) then
+            allocate(F_ip1list(lip1:uip1),stat=istat)
+            if (istat /= 0) then
+               call msg(MSG_ERROR,'(vgrid_wb_get) Cannot allocate memory for ip1list: '//trim(name_S))
+               return
+            endif
+         endif
+         if (lbound(F_ip1list,1) /= lip1 .or. ubound(F_ip1list,1) < uip1) then
+            if (lbound(F_ip1list,1) /= lip1) then
+               call msg(MSG_ERROR,'(vgrid_wb_get) provided ip1list lbound mismatch: '//trim(name_S))
+            else
+               call msg(MSG_ERROR,'(vgrid_wb_get) provided ip1list size mismatch: '//trim(name_S))
+            endif
+            return
+         endif
+         F_ip1list = -1
+         F_ip1list(lip1:uip1) = m_vgrids(F_id)%ip1(lip1:uip1)
+      endif
+      if (present(F_type)) F_type = m_vgrids(F_id)%itype
+      if (present(F_sfcfld_S)) F_sfcfld_S = m_vgrids(F_id)%sfcfld_S
+      F_istat = nip1
+      !---------------------------------------------------------------------
+      return
+   end function vgrid_wb_get_i
+
+
+   !/**
+   function vgrid_wb_bcast_s(F_name_S,F_comm_S) result(F_istat)
+      implicit none
+      !@objective  MPI bcast stored vgrid
+      !@arguments
+      character(len=*),intent(in) :: F_name_S !- Key (internal var name)
+      character(len=*),intent(in) :: F_comm_S !- RPN_COMM communicator name
+      !@return
+      integer :: F_istat !- exit status
+      !@author  S. Chamberland, 2012-08
+      !**/
+      character(len=WB_MAXNAMELENGTH) :: sfcfld_S
+      integer :: itype,me,istat
+      logical :: ismaster_L
+      type(vgrid_descriptor) :: vgrid
+      integer,pointer :: ip1list(:)
+      !---------------------------------------------------------------------
+      F_istat = RMN_OK
+      call rpn_comm_rank(F_comm_S,me,istat)
+      ismaster_L = (me == RPN_COMM_MASTER)
+      nullify(ip1list)
+      if (ismaster_L) then
+         F_istat = vgrid_wb_get(F_name_S,vgrid,ip1list,itype,sfcfld_S)
+      endif
+      call collect_error(F_istat)
+      if (.not.RMN_IS_OK(F_istat)) return
+      F_istat = vgrid_wb_bcast(vgrid,ip1list,itype,sfcfld_S,F_comm_S)
+      if (RMN_IS_OK(F_istat) .and. .not.ismaster_L) then
+         if (itype < VGRID_UPAIR_TYPE) then
+            F_istat = vgrid_wb_put(F_name_S,itype,ip1list)
+         else
+            F_istat = vgrid_wb_put(F_name_S,vgrid,ip1list,sfcfld_S)
+         endif
+      endif
+      !---------------------------------------------------------------------
+      return
+   end function vgrid_wb_bcast_s
+
+
+   !/**
+   function vgrid_wb_bcast_v(F_vgrid,F_ip1list,F_itype,F_sfcfld_S,F_comm_S) result(F_istat)
+      implicit none
+      !@objective  MPI bcast stored vgrid
+      !@arguments
+      type(vgrid_descriptor),intent(inout) :: F_vgrid 
+      integer,pointer :: F_ip1list(:)            !- list of ip1
+      integer,intent(inout) :: F_itype
+      character(len=*),intent(inout) :: F_sfcfld_S
+      character(len=*),intent(in) :: F_comm_S    !- RPN_COMM communicator name
+      !@return
+      integer :: F_istat !- exit status
+      !@author  S. Chamberland, 2012-08
+      !**/
+      integer,parameter :: NMAXIP1 = 1024
+      integer,parameter :: CHARPERBYTE = 4
+      integer,parameter :: STRLEN = 32
+      integer,parameter :: STRSIZE = STRLEN/CHARPERBYTE
+      integer,parameter :: ADDINT = 3
+      integer,parameter :: IBUFSIZE = ADDINT + NMAXIP1 + STRSIZE
+      integer :: me,istat,istat2,nip1,i0,in
+      logical :: ismaster_L
+      integer :: ibuf(IBUFSIZE),n123(3)
+      character(len=STRLEN) :: sfcfld_S
+      real*8,pointer :: vtbl_8(:,:,:)
+      !---------------------------------------------------------------------
+      F_istat = RMN_OK
+      call rpn_comm_rank(F_comm_S,me,istat)
+      ismaster_L = (me == RPN_COMM_MASTER)
+      nullify(vtbl_8)
+      if (ismaster_L) then
+         F_istat = vgd_get(F_vgrid,'VTBL',vtbl_8,quiet=.true.)
+         n123 = ubound(vtbl_8)
+         sfcfld_S = F_sfcfld_S
+         ibuf = 0
+         ibuf(1:STRSIZE) = transfer(sfcfld_S,istat)
+         ibuf(STRSIZE+1) = lbound(F_ip1list,1)
+         ibuf(STRSIZE+2) = ubound(F_ip1list,1)
+         ibuf(STRSIZE+3) = F_itype
+         nip1 = size(F_ip1list)
+         ibuf(STRSIZE+(ADDINT+1):STRSIZE+(ADDINT+1)+(nip1-1)) = F_ip1list(:)
+      endif
+      call rpn_comm_bcast(n123,size(n123),RPN_COMM_INTEGER,RPN_COMM_MASTER,F_comm_S,istat)
+      if (.not.ismaster_L) then
+         allocate(vtbl_8(n123(1),n123(2),n123(3)),stat=istat)
+      endif
+      call rpn_comm_bcast(vtbl_8,size(vtbl_8),RPN_COMM_REAL8,RPN_COMM_MASTER,F_comm_S,istat)
+      call rpn_comm_bcast(ibuf,size(ibuf),RPN_COMM_INTEGER,RPN_COMM_MASTER,F_comm_S,istat2)
+      F_istat = min(F_istat,istat,istat2)
+      if (.not.ismaster_L) then
+         F_istat = vgd_new(F_vgrid,vtbl_8)
+         sfcfld_S = transfer(ibuf(1:STRSIZE),sfcfld_S)
+         F_sfcfld_S = sfcfld_S
+         i0 = ibuf(STRSIZE+1)
+         in = ibuf(STRSIZE+2)
+         F_itype = ibuf(STRSIZE+3)
+         nullify(F_ip1list)
+         allocate(F_ip1list(i0:in))
+         F_ip1list(i0:in) = ibuf(STRSIZE+(ADDINT+1):STRSIZE+(ADDINT+1)+in-i0)
+      endif
+      if (associated(vtbl_8)) deallocate(vtbl_8,stat=istat)
+!!$      call collect_error(F_istat)
+!!$      if (.not.RMN_IS_OK(F_istat)) return
+      !---------------------------------------------------------------------
+      return
+   end function vgrid_wb_bcast_v
+
+
+   !==== Private functions =================================================
+
+
+   subroutine priv_init()
+      implicit none
+      logical,save :: init_L = .false.
+      integer :: istat
+      !---------------------------------------------------------------------
+      if (init_L) return
+      m_nvgrids = 0
+      allocate(m_vgrids(MAXVGRIDS),stat=istat)
+      if (istat /= 0) then
+         call msg(MSG_ERROR,'(vgrid_wb) Cannot allocate data store')
+         return
+      endif
+      init_L = .true.
+      !---------------------------------------------------------------------
+      return
+   end subroutine priv_init
+
+end module vgrid_wb
