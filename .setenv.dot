@@ -1,7 +1,12 @@
-#!/bin/ksh
-[[ -z $COMP_ARCH ]] && echo ERROR: COMP_ARCH is not defined && return
+if [[ -z $storage_model ]] ; then
+  echo ERROR: environment variable storage_model is not defined, aborting
+  return 1
+fi
+echo "USING: storage_model='${storage_model}'"
+#
+[[ -z $COMP_ARCH ]] && echo ERROR: COMP_ARCH is not defined && return 1
 echo "USING: COMP_ARCH=$COMP_ARCH"
-
+#
 if [[ -f .setenv_${COMP_ARCH}.dot ]] ; then
    echo "sourcing .setenv_${COMP_ARCH}.dot"
    . .setenv_${COMP_ARCH}.dot
@@ -9,5 +14,11 @@ fi
 export sps=$(pwd)
 export PATH=$(pwd)/bin:$PATH
 export SSMVERSION=$(ssm version | cut -d. -f1)
-
+#
 [[ -f .exper_cour ]] || . ./.exper_cour.dot
+#
+ulimit -s unlimited
+ulimit -m unlimited
+ulimit -d unlimited
+#
+. s.ssmuse.dot gem_4.6.0_gfortran49-dev rde_1.1.0 python-2.7.7 task-setup
