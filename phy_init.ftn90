@@ -1,0 +1,137 @@
+#ifdef DOC
+!-------------------------------------- LICENCE BEGIN ------------------------------------
+!Environment Canada - Atmospheric Science and Technology License/Disclaimer, 
+!                     version 3; Last Modified: May 7, 2008.
+!This is free but copyrighted software; you can use/redistribute/modify it under the terms 
+!of the Environment Canada - Atmospheric Science and Technology License/Disclaimer 
+!version 3 or (at your option) any later version that should be found at: 
+!http://collaboration.cmc.ec.gc.ca/science/rpn.comm/license.html 
+!
+!This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+!without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+!See the above mentioned License/Disclaimer for more details.
+!You should have received a copy of the License/Disclaimer along with this software; 
+!if not, you can write to: EC-RPN COMM Group, 2121 TransCanada, suite 500, Dorval (Quebec), 
+!CANADA, H9P 1J3; or send e-mail to service.rpn@ec.gc.ca
+!-------------------------------------- LICENCE END --------------------------------------
+#endif
+
+#ifdef API_ONLY
+interface
+#endif
+
+!/**
+function phy_init3 ( F_dateo, F_dt, F_i0, F_in, F_j0, F_jn, &
+                     F_nk, callback_getij, callback_rdrad) result(F_istat)
+   implicit none
+
+   !@objective 
+
+   !@arguments
+   integer,intent(in) :: F_dateo
+   real,intent(in) :: F_dt
+   !TODO: pass 2 ezscint grids instead of the following 4 params
+   integer,intent(in) :: F_i0,F_in,F_j0,F_jn !# Dyn Sub domain on which phys run
+   integer,intent(in) :: F_nk
+   external :: callback_getij, callback_rdrad
+   !@return
+   integer :: F_istat
+
+   !@author Stephane Chamberland, 2012-06
+
+   !@revision
+
+   !**/
+
+#ifndef API_ONLY
+#include <arch_specific.hf>
+#include <WhiteBoard.hf>
+#include <rmnlib_basics.hf>
+#include <msg.h>
+#include "options.cdk"
+#include "phygrd.cdk"
+
+   integer,external :: msg_getUnit,phydebu0,phy_fold_init
+   character(len=3),parameter :: PHYOPT_SET = 'SET'
+   logical :: print_L
+   integer :: dateo,idate(14),bidon,istat,unout,ntr
+   integer :: p_ni,p_nj
+
+   ! ---------------------------------------------------------------------
+
+   unout   = msg_getUnit(MSG_INFO)
+   print_L = (unout > 0)
+   dateo   = F_dateo
+   F_istat = newdate(dateo,idate,bidon,RMN_DATE_STAMP2OLD)
+
+   if (.not.RMN_IS_OK(F_istat)) then
+      call msg(MSG_ERROR,'(phy_init) Problem converting datao')
+      return
+   endif
+
+   call phy_opti('DATE', idate, 14,PHYOPT_SET,print_L,istat)
+   call phy_optr('DELT', F_dt ,  1,PHYOPT_SET,print_L,istat)
+
+   istat = wb_get('itf_phy/READ_TRACERS_NTR',ntr)
+   if (WB_IS_OK(istat) .and. ntr > 0) then
+      allocate(dyninread_list_s(ntr),stat=istat)
+      if (istat /= 0) then
+         call msg(MSG_ERROR,'(phy_init) Unable to allocate space for tracer list')
+         return
+      endif
+      if (.not.WB_IS_OK(wb_get('itf_phy/READ_TRACERS',dyninread_list_s,ntr))) then
+         call msg(MSG_ERROR,'(phy_init) Unable to retrieve tracer WB entry')
+         return
+      endif
+   else
+      call msg(MSG_INFO,'(phy_init) No list of read tracers found')
+      allocate(dyninread_list_s(1))
+      dyninread_list_s = " "
+      ntr = 0
+   endif
+
+   phy_doni = F_in - F_i0 + 1
+   phy_donj = F_jn - F_j0 + 1
+   phy_dyn_i0 = F_i0
+   phy_dyn_in = F_in
+   phy_dyn_j0 = F_j0
+   phy_dyn_jn = F_jn
+
+   if (p_runlgt <= 0) p_runlgt = phy_doni
+   p_runlgt = min(phy_doni*phy_donj,max(1,p_runlgt))
+   p_ni = p_runlgt
+   p_nj = phy_doni*phy_donj/p_ni
+   if (p_ni*p_nj < phy_doni*phy_donj) p_nj = p_nj + 1
+
+   F_istat = phydebu0 (p_ni, p_nj, F_nk, print_L, callback_rdrad)
+
+   if (.not.RMN_IS_OK(F_istat)) then
+      call msg(MSG_ERROR,'(phy_init) Problem in phydebu')
+      return
+   endif
+
+   F_istat = min(phy_fold_init(F_i0,F_in,F_j0,F_jn),F_istat)
+
+   if (.not.RMN_IS_OK(F_istat)) then
+      call msg(MSG_ERROR,'(phy_init) Problem in phy_fold_init')
+      return
+   endif
+
+   if (print_L) then
+      call printbus('E')
+      call printbus('D')
+      call printbus('P')
+      call printbus('V')
+   endif
+
+   call ser_init (callback_getij)
+
+   ! ---------------------------------------------------------------------
+
+   return
+#endif
+end function phy_init3
+
+#ifdef API_ONLY
+end interface
+#endif

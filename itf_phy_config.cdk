@@ -1,0 +1,14 @@
+      character*16  P_dumpbus_S, P_pbl_glacier_S
+!
+      logical P_cond_satu_L, P_pbl_gldyn_L , P_pbl_glprbcf_L
+!
+      integer P_out_moyhr, P_dumpbus, P_pbl_glacier_NB
+
+      real P_lmvd_weigh_high_lat, P_lmvd_weigh_low_lat
+      real P_lmvd_high_lat      , P_lmvd_low_lat
+!
+      common /phy_s/ P_dumpbus_S, P_pbl_glacier_S
+      common /phy_l/ P_cond_satu_L, P_pbl_gldyn_L , P_pbl_glprbcf_L
+      common /phy_i/ P_out_moyhr, P_dumpbus, P_pbl_glacier_NB
+      common /phy_r/ P_lmvd_weigh_high_lat, P_lmvd_weigh_low_lat
+      common /phy_r/ P_lmvd_high_lat      , P_lmvd_low_lat
