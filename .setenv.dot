@@ -13,6 +13,7 @@ if [[ -f .setenv_${COMP_ARCH}.dot ]] ; then
 fi
 export sps=$(pwd)
 export PATH=$(pwd)/bin:$PATH
+s.use sps-linkit as linkit
 export SSMVERSION=$(ssm version | cut -d. -f1)
 #
 ulimit -s unlimited
