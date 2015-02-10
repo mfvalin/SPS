@@ -431,7 +431,7 @@ runmodel() {
 #   if [[ x$binMPIext == xmpiAbs ]] ; then
    if [[ x$binMPIext == xAbs ]] ; then
       #rmpirun="$(which my.mpirun || true)"
-      rmpirun="$(which r.run_in_parallel || true)"
+      rmpirun="$(which sps.run_in_parallel || true)"
       [[ x$rmpirun == x ]] && rmpirun="r.mpirun"
       #mycmd="$rmpirun -pgm ${TASK_BIN}/${model_name}.Abs -npex $MPI_NPEX -npey $MPI_NPEY"
       mycmd="$rmpirun -pgm ${TASK_BIN}/${model_name}.Abs -npex $((MPI_NGRIDS*MPI_NPEX*MPI_NPEY)) -npey $MPI_NDOMS ${inorder} ${nompi} ${debug} -minstdout 3"
