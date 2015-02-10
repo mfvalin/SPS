@@ -15,10 +15,11 @@ export sps=$(pwd)
 export PATH=$(pwd)/bin:$PATH
 export SSMVERSION=$(ssm version | cut -d. -f1)
 #
-[[ -f .exper_cour ]] || . ./.exper_cour.dot
-#
 ulimit -s unlimited
 ulimit -m unlimited
 ulimit -d unlimited
 #
 . s.ssmuse.dot gem_4.6.0_gfortran49-dev rde_1.1.0 python-2.7.7 task-setup
+#
+[[ -f .exper_cour ]] || . ./.exper_cour.dot
+#
