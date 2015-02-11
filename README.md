@@ -12,3 +12,4 @@ make sps               # build executable
 linkit                 # create links to run sps
 sps.ksh                # run sps
 
+# updated in branch glacier_mv
