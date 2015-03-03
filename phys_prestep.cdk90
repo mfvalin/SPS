@@ -76,6 +76,7 @@ contains
  
 
       !# Abort if 1hr precipitation accumulation is negative
+      BUSENT3d(busidx_pren:busidx_pren+p_ni-1,:) = max(0.0,BUSENT3d(busidx_pren:busidx_pren+p_ni-1,:))
       if ( minval( BUSENT3d(busidx_pren:busidx_pren+p_ni-1,:) ) < 0.0 ) then
          F_istat = RMN_ERR
          call msg(MSG_ERROR,'(Phys) Pre-Step ABORT: 1hr precip accum. PR0 is NEGATIVE. ')
