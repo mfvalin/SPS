@@ -34,7 +34,7 @@ in=ICEL;  freq=0; search=ANAL,CLIM; interp=near;     timeint=linear
 in=XA;    freq=0; search=ANAL;      interp=near;
 
 
-in=FI;  freq=0,1; search=INREP;     interp=linear;   timeint=linear
-in=FB;  freq=0,1; search=INREP;     interp=linear;   timeint=linear
+in=AD;  freq=0,1; search=INREP;     interp=linear;   timeint=linear
+in=N4;  freq=0,1; search=INREP;     interp=linear;   timeint=linear
 in=PR0; freq=0,1; search=INREP;     interp=linear;   timeint=next
 #in=PR; freq=0,1; search=INREP;     interp=linear;   timeint=increment
