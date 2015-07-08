@@ -84,7 +84,8 @@ contains
       endif
 
       !# Note: 1h PR accumulation PR0 is read into PREN then copied to TSS
-      BUSPER3d(busidx_tss:busidx_tss+p_ni-1,:) = BUSENT3d(busidx_pren:busidx_pren+p_ni-1,:)/3600.
+      BUSPER3d(busidx_tss:busidx_tss+p_ni-1,:) = BUSENT3d(busidx_pren:busidx_pren+p_ni-1,:)
+!      BUSPER3d(busidx_tss:busidx_tss+p_ni-1,:) = BUSENT3d(busidx_pren:busidx_pren+p_ni-1,:)/3600.
       !---------------------------------------------------------------------
       return
    end function phys_prestep
