@@ -15,6 +15,7 @@
 
 !/*
 module ezgrid_mod
+   use ISO_C_BINDING
    use ptopo_utils
    use agg_filter_mod
    implicit none
