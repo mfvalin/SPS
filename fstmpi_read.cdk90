@@ -15,6 +15,7 @@
 
 !/*
 module fstmpi_read_mod
+   use ISO_C_BINDING
    use vGrid_Descriptors
    use vgrid_wb
    use fst_mod
