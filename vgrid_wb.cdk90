@@ -17,6 +17,7 @@
 
 !/*
 module vgrid_wb
+   use ISO_C_BINDING
    use vGrid_Descriptors
    implicit none
    private

@@ -1,0 +1,398 @@
+#ifdef DOC
+!-------------------------------------- LICENCE BEGIN ------------------------------------
+!Environment Canada - Atmospheric Science and Technology License/Disclaimer, 
+!                     version 3; Last Modified: May 7, 2008.
+!This is free but copyrighted software; you can use/redistribute/modify it under the terms 
+!of the Environment Canada - Atmospheric Science and Technology License/Disclaimer 
+!version 3 or (at your option) any later version that should be found at: 
+!http://collaboration.cmc.ec.gc.ca/science/rpn.comm/license.html 
+!
+!This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+!without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+!See the above mentioned License/Disclaimer for more details.
+!You should have received a copy of the License/Disclaimer along with this software; 
+!if not, you can write to: EC-RPN COMM Group, 2121 TransCanada, suite 500, Dorval (Quebec), 
+!CANADA, H9P 1J3; or send e-mail to service.rpn@ec.gc.ca
+!-------------------------------------- LICENCE END --------------------------------------
+#endif
+
+#ifdef API_ONLY
+interface
+#endif
+
+!/**
+function phy_input2(pre_fold_opr_clbk,F_dateo,F_dt,F_step,F_coregridid,F_gridid,F_incfg_S,F_basedir_S,F_geoname_S) result(F_istat)
+#ifndef API_ONLY
+   use vGrid_Descriptors
+   use vgrid_wb
+   use input_mod
+   use ezgrid_mod
+   use bus_fold_mod
+   use statfld_dm_mod
+#endif
+   use ISO_C_BINDING
+   implicit none
+   !@objective 
+   !@arguments
+   integer,external :: pre_fold_opr_clbk
+   integer,intent(in) :: F_dateo,F_dt, F_step, F_coregridid, F_gridid
+   character(len=*) :: F_incfg_S    !- physics_input_table path
+   character(len=*) :: F_basedir_S  !- base path for input data file
+   character(len=*) :: F_geoname_S  !- name of geophys file
+   !@return
+   integer :: F_istat
+   !@author Michel Desgagne - Spring 2011
+   !@revision
+   !  2011-06 Stephane Chamberland 
+   !**/
+#ifndef API_ONLY
+#include <arch_specific.hf>
+#include <rmnlib_basics.hf>
+#include <clib_interface.cdk>
+#include <gmm.hf>
+#include <msg.h>
+#include "buses.cdk"
+#include "phyinput.cdk"
+#include "phygrd.cdk"
+   include "rpn_comm.inc"
+   integer,external :: phy_getindx3,phy_getvarlist,phyent2per
+   integer,parameter :: STAT_PRECISION = 4
+   integer,parameter :: MAX_PARAMS = 8
+   logical,parameter :: DONT_DO_Z0_L = .false. != (schmsol == 'FCREST')
+   logical,parameter :: FSTOPC_SET = .false.
+
+   logical,save :: is_init_L = .false.
+   integer,save :: inputid = -1
+   integer,save :: nbvar = 0,bp_maxij(2),be_maxij(2)
+   integer,save :: phydim_ni=0, phydim_nj=0, phydim_nk=0
+   integer,save :: l_dyn_nij(2) = (/0,0/)
+   real,pointer,dimension(:,:),save :: BUSENT3d => null()
+   real,pointer,dimension(:,:),save :: BUSPER3d => null()
+
+   integer :: ivar,istat,busidx,busidx2,params(MAX_PARAMS),tmidx,nread,k1
+   integer :: minxyz(3),maxxyz(3)
+   real, pointer, dimension(:,:) :: refp0
+   real, pointer, dimension(:,:,:) :: data,data2,pw_pm,sub_data,sub_data2
+   character(len=4) :: outname_S,bus_S,bus2_S,inname_S,inname2_S
+   character(len=32) :: varname_S, varname2_S,readlist_S(PHYINREAD_MAX),horiz_interp_S,vgrid_S
+   character(len=512) :: dummylist_S(10)
+   logical :: notop_L
+   type(vgrid_descriptor) :: vgridm,vgridt
+   type(gmm_metadata) :: mymeta
+   integer,pointer :: ip1list(:)
+   ! ---------------------------------------------------------------------
+   call timing_start(30, 'phy_input')
+   istat = fstopc('MSGLVL','INFORM',FSTOPC_SET)
+
+   nullify(pw_pm)
+   istat = gmm_get('PW_PM:M',pw_pm)
+
+   F_istat = RMN_OK
+   IF_INIT: if (.not.is_init_L) then
+      is_init_L = .true.
+      F_istat = gmm_get('BUSENT_3d',BUSENT3d)
+      F_istat = min(gmm_get('BUSPER_3d',BUSPER3d),F_istat)
+      if (.not.RMN_IS_OK(F_istat)) then
+         call msg(MSG_ERROR,'(phy_input) problem getting bus pointers')
+      else
+         be_maxij = ubound(BUSENT3d)
+         bp_maxij = ubound(BUSPER3d)
+      endif
+      call phy_opti('NI',phydim_ni,1,'GET',.false.,istat)
+      call phy_opti('NJ',phydim_nj,1,'GET',.false.,istat)
+      call phy_opti('NK',phydim_nk,1,'GET',.false.,istat)
+      if (associated(pw_pm)) phydim_nk = ubound(pw_pm,3)
+      if (any((/phydim_ni,phydim_nj/) == 0)) then
+         call msg(MSG_ERROR,'(phy_input) problem getting bus size')
+         F_istat = RMN_ERR
+      endif
+      inputid = input_new(F_dateo,F_dt,F_incfg_S)
+      istat = inputid
+      if (.not.RMN_IS_OK(inputid)) then
+         call msg(MSG_ERROR,'(phy_input) problem initializing physic input')
+      else
+         nbvar = input_nbvar(inputid)
+         istat = min(input_set_basedir(inputid,F_basedir_S),istat)
+         istat = min(input_set_filename(inputid,'geop',F_geoname_S,.false.,INPUT_FILES_GEOP),istat)
+      endif
+      F_istat = min(istat,F_istat)
+      nullify(ip1list)
+      istat = vgrid_wb_get('ref-m',vgridm,ip1list)
+      istat = vgrid_wb_put('phy-m',vgridm,ip1list,'PHYREFP0:M')
+      nullify(ip1list)
+      istat = vgrid_wb_get('ref-t',vgridt,ip1list)
+      istat = vgrid_wb_put('phy-t',vgridt,ip1list,'PHYREFP0:M')
+      istat = ezgrid_params(F_gridid,l_dyn_nij)
+      mymeta = GMM_NULL_METADATA
+      mymeta%l(1) = gmm_layout(1,l_dyn_nij(1),0,0,l_dyn_nij(1))
+      mymeta%l(2) = gmm_layout(1,l_dyn_nij(2),0,0,l_dyn_nij(2))
+      nullify(refp0)
+      istat = gmm_create('PHYREFP0:M',refp0,mymeta)
+      call collect_error(F_istat)
+   endif IF_INIT
+   if (.not.RMN_IS_OK(F_istat)) return
+
+   nullify(refp0)
+   istat = gmm_get('PHYREFP0:M',refp0)
+
+   if (associated(refp0) .and. associated(pw_pm)) then
+      refp0(:,:) = pw_pm(1:l_dyn_nij(1),1:l_dyn_nij(2),phydim_nk)
+   endif
+
+   phyinread_n = 0
+   phyinread_dateo = F_dateo
+   phyinread_dt = F_dt
+   phyinread_step = F_step
+   nread = 0
+   readlist_S(:) = ' '
+
+   call priv_ozone(F_step)
+
+   call chm_load_emissions(BUSPER3d,bp_maxij(1),bp_maxij(1)*phydim_nj,F_dateo,F_dt,F_step)
+
+   tmidx = -1
+   F_istat = RMN_OK
+
+   istat = input_setgridid(inputid,F_coregridid)
+   if (F_step == 0) BUSENT3d = 0.
+   VARLOOP: do ivar=1,nbvar
+      istat = input_isvarstep(inputid,ivar,F_step)
+      if (.not.RMN_IS_OK(istat)) then
+         cycle VARLOOP !var not requested at this step
+      endif
+      istat = input_meta(inputid,ivar,inname_S,inname2_S,dummylist_S,horiz_interp_S)
+      if (.not.RMN_IS_OK(istat)) then
+         call msg(MSG_ERROR,'(phy_input) problem getting input varname')
+         cycle VARLOOP
+      endif
+
+      bus_S = ' '
+      istat = priv_getindx(varname_S,inname_S,bus_S,busidx,params)
+      if (RMN_IS_OK(istat) .and. inname2_S /= ' ') then
+         bus2_S = bus_S
+         istat = priv_getindx(varname2_S,inname2_S,bus2_S,busidx2,params)
+      endif
+      if (.not.RMN_IS_OK(istat)) then
+         call msg(MSG_INFO,'(phy_input) ignoring var, not declared in bus: '//trim(inname_S)//' : '//trim(inname2_S))
+         cycle VARLOOP !# var not needed
+      endif
+
+      vgrid_S = 'phy-m' !#SLB
+      if (params(BUSPAR_STAG) == 1) vgrid_S = 'phy-t' !#SLC / SLS
+      nullify(data,data2)
+      istat = input_get(inputid,ivar,F_step,F_gridid,vgrid_S,data,data2)
+
+      if (params(BUSPAR_INIT) == 0 .and. .not.RMN_IS_OK(istat)) then
+         call msg(MSG_WARNING,'(phy_input) missing optional var: '//trim(inname_S)//' : '//trim(varname_S))
+         cycle VARLOOP
+      endif
+      if (.not.(RMN_IS_OK(istat) .and. associated(data))) then
+         call msg(MSG_ERROR,'(phy_input) missing var: '//trim(inname_S)//' : '//trim(varname_S))
+         if (inname2_S /= ' ' .and. .not.associated(data2)) &
+              call msg(MSG_ERROR,'(phy_input) missing var: '//trim(inname2_S)//' : '//trim(varname2_S))
+         F_istat = RMN_ERR
+         cycle VARLOOP
+      endif
+
+      if (inname_S == 'tm') tmidx = busidx
+
+      ! Remove top thermodynamic level if required
+      call phy_optl('NOTOP',notop_L,1,'GET',.false.,istat)
+      k1 = 1
+      if (vgrid_S == 'phy-t' .and. notop_L) k1 = k1 + 1
+
+      sub_data => data(:,:,k1:)
+      F_istat = min(priv_fold(varname_S,inname_S,bus_S,busidx,sub_data,readlist_S,nread,horiz_interp_S),F_istat)
+      if (inname2_S /= ' ') then
+         sub_data2 => data2(:,:,k1:)
+         F_istat = min(priv_fold(varname2_S,inname2_S,bus2_S,busidx2,sub_data2,readlist_S,nread,horiz_interp_S),F_istat)
+      endif
+
+      if (associated(data)) deallocate(data,stat=istat)
+      if (associated(data2)) deallocate(data2,stat=istat)
+
+   enddo VARLOOP
+
+   F_istat = min(priv_checklist(readlist_S,nread,F_step),F_istat)
+
+   if ((RMN_IS_OK(F_istat)).and.(nread > 0)) then
+      call msg(MSG_INFO,'(phy_input) All needed var were found')
+   endif
+
+   F_istat = min(phyent2per(readlist_S,nread,F_step),F_istat)
+
+   phyinread_n = nread
+   if (nread > 0) phyinread_list_S(1:nread) = readlist_S(1:nread)
+
+   call timing_stop(30, 'phy_input')
+   ! ---------------------------------------------------------------------
+   return
+
+
+contains
+
+
+   !/**
+   subroutine priv_ozone(my_step)
+      implicit none
+      !@objective check for daily update to climatological ozone
+      integer,intent(in) :: my_step
+      !**/
+#include "options.cdk"
+      integer :: istat,aujour,curdate,curdd,curmo,part1,part2,ppjour
+      real(8) :: hours
+      ! ---------------------------------------------------------------------
+      if (intozot .and. my_step > 1) then
+         aujour = 1 
+         ppjour = nint(86400./delt)
+         if (ppjour > 0) aujour = mod(my_step, ppjour)
+
+         if(aujour == 1)then
+            hours = my_step/(3600./dble(delt))
+            call incdatr(curdate,date(14), hours)
+            istat = newdate(curdate,part1,part2,RMN_DATE_STAMP2PRINT)
+            if (istat == 0) then
+               curdd = mod(part1,100)
+               curmo = mod(part1/100,100)
+               call intozon(curdd, curmo, RMN_STDOUT)
+            endif
+         endif
+      endif
+      ! ---------------------------------------------------------------------
+      return
+   end subroutine priv_ozone
+
+
+
+   !/**
+   function priv_fold(my_varname_S,my_inname_S,my_bus_S,my_busidx,my_data,my_readlist_S,my_nread,my_horiz_interp_S) result(my_istat)
+      implicit none
+      character(len=*) :: my_varname_S,my_inname_S,my_bus_S,my_readlist_S(:),my_horiz_interp_S
+      real, dimension(:,:,:), pointer :: my_data
+      integer :: my_busidx,my_nread,my_istat
+      !**/
+      character(len=64) :: msgFormat_S,msg_S
+      integer :: minxyz(3),maxxyz(3),msgLevelMin,msgUnit,istat,k
+      logical :: canWrite_L
+      ! ---------------------------------------------------------------------
+      minxyz = lbound(my_data)
+      maxxyz = ubound(my_data)
+      call physimple_transforms3d(my_varname_S,my_data,DONT_DO_Z0_L,maxxyz(1),maxxyz(2),maxxyz(3))
+      my_istat = pre_fold_opr_clbk(my_data,my_varname_S,my_horiz_interp_S,minxyz(1),maxxyz(1),minxyz(2),maxxyz(2),minxyz(3),maxxyz(3))
+
+      call msg_getInfo(canWrite_L,msgLevelMin,msgUnit,msgFormat_S)
+      if (MSG_INFOPLUS >= msgLevelMin) then
+         do k=lbound(my_data,3),ubound(my_data,3)
+            write(msg_S,'(a,i4.4)') trim(my_inname_S)//' => '//trim(my_varname_S)//' ',k
+            call statfld_dm(my_data(:,:,k:k),msg_S,F_step,'phy_input',STAT_PRECISION)
+         enddo
+      endif
+
+      my_istat = min(bus_fold(my_data,trim(my_bus_S)//'p',my_busidx,minxyz(3),maxxyz(3)),my_istat)
+
+      if (RMN_IS_OK(my_istat)) then
+         my_nread = min(my_nread + 1,size(my_readlist_S))
+         my_readlist_S(my_nread) = my_varname_S
+         istat = clib_tolower(my_readlist_S(my_nread))
+      endif
+      ! ---------------------------------------------------------------------
+      return
+   end function priv_fold
+
+
+   !/**
+   function priv_getindx(m_varname_S,m_inname_S,m_bus_S,m_busidx,m_params) result(m_istat)
+      implicit none
+      !@objective Look for inname in dict, as IN, then ON then VN
+      character(len=*),intent(out)   :: m_varname_S
+      character(len=*),intent(inout) :: m_inname_S,m_bus_S
+      integer,intent(out) :: m_busidx,m_params(:)
+      integer :: m_istat
+      !**/
+      character(len=32) :: outname_S,tmpname_S
+      ! ---------------------------------------------------------------------
+      m_varname_S = '  '
+      outname_S = '  '
+      m_istat = phy_getindx3(m_varname_S,outname_S,m_inname_S,m_bus_S,m_busidx,m_params,MAX_PARAMS)
+      if (.not.RMN_IS_OK(m_istat)) then
+         m_varname_S = '  '
+         tmpname_S = '  '
+         outname_S = m_inname_S
+         m_istat = phy_getindx3(m_varname_S,outname_S,tmpname_S,m_bus_S,m_busidx,m_params,MAX_PARAMS)
+      endif
+      if (.not.RMN_IS_OK(m_istat)) then
+         m_varname_S = m_inname_S
+         tmpname_S = ' '
+         outname_S = ' '
+         m_istat = phy_getindx3(m_varname_S,outname_S,tmpname_S,m_bus_S,m_busidx,m_params,MAX_PARAMS)
+         if (RMN_IS_OK(m_istat)) then
+            if (len_trim(m_inname_S) > 0) then
+               m_inname_S = tmpname_S
+            else
+               if (len_trim(outname_S) > 0) then
+                  m_inname_S = outname_S
+               else
+                  m_istat = RMN_ERR
+               endif
+            endif
+         endif
+      endif
+      ! ---------------------------------------------------------------------
+      return
+   end function priv_getindx
+
+
+   !/**
+   function priv_checklist(F_readlist_S,F_nread,F_step) result(F_istat)
+      implicit none
+      !@objective Check if all needed var are read
+      integer,intent(in) :: F_nread,F_step
+      character(len=*) :: F_readlist_S(:)
+      integer :: F_istat
+      !**/
+      integer,parameter :: NVARMAX = 80
+      integer,parameter :: MUST_INIT = 1
+      integer :: nvars,ivar
+      character(len=32) :: my_bus_S,varname_S,varlist_S(NVARMAX)
+      ! ---------------------------------------------------------------------
+      F_istat = RMN_OK
+      if (F_step /= 0) return
+
+      my_bus_S = 'E'
+      nvars = phy_getvarlist(varlist_S,' ',' ',' ',my_bus_S,MUST_INIT,NVARMAX)
+
+!!$      do ivar = 1,size(geom_varlist_S)
+!!$         if (nvars >= NVARMAX) then
+!!$            call msg(MSG_ERROR,'(phy_input) checklist NVARMAX too small')
+!!$            F_istat = RMN_ERR
+!!$            return
+!!$         endif
+!!$         nvars = nvars + 1
+!!$         varlist_S(nvars) = geom_varlist_S(ivar)
+!!$      enddo
+      do ivar = 1,nvars
+         istat = clib_tolower(varlist_S(ivar))
+      end do
+
+      do ivar=1,F_nread
+         istat = clib_tolower(F_readlist_S(ivar))
+      enddo
+
+      do ivar = 1,nvars
+         if (F_nread == 0 .or. &
+              .not.any(F_readlist_S(1:F_nread) == varlist_S(ivar))) then
+            F_istat = RMN_ERR
+            call msg(MSG_ERROR,'(phy_input) Missing mandatory var (physics_input_table missing entry?): '//trim(varlist_S(ivar)))
+         endif
+      end do
+      ! ---------------------------------------------------------------------
+      return
+   end function priv_checklist
+
+
+#endif
+end function phy_input2
+
+#ifdef API_ONLY
+end interface
+#endif

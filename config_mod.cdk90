@@ -9,6 +9,7 @@
 
 !/**
 module config_mod
+   use ISO_C_BINDING
    implicit none
    private
    !@objective Read options config [dictionary + users config] for MPI jobs
