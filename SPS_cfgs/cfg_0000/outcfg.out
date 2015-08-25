@@ -1,8 +1,8 @@
  etk_S=ETIKET_TO_BE_SET;
  units_S=hour;
- datyp=134;
- closeopen=hours,3;
- nbits=16;
+ datyp=133;
+ closeopen=hours,768;
+ nbits=32;
  ip3=0;
  ndigits=6;
  linbot=0;
@@ -12,15 +12,18 @@
  rewrite_L=f;
 
  levels=1,model,all;
+ levels=2,model,<1,8,1>;
  
  grid=1,model;
 
- steps=1,hour,<0.,720.,3.>;
- steps=2,step,<1.,700,1.>;
- steps=3,hour,12.;
- 
- sortie_p([TJ,TDK,TG,DQ,UD,VD,FV,FC,TM,LG,PR], grid, 1, levels, 1, steps, 2)
+ steps=1,hour,<0.,8784.,24.>;
+ steps=2,step,<1.,700.,1.>;
+ steps=3,step,0.;
 
- sortie_p([I0,I1,I2,I3,I4,I5,I6,I7,I8,I9,SD,DN]    , grid, 1, levels, 1, steps, 2)
+ sortie_p([PR,SN,RN,TRAF,TDRA]                , grid, 1, levels, 1, steps, 1)
 
- sortie_p([T8,H8,P8,U8,V8,U1,U3,WT]  , grid, 1, levels, 1, steps, 2)
+ sortie_p([I0,I1,I2,I3,I4,I5,I6,I7,I8,I9,SD,DN]    , grid, 1, levels, 1, steps, 1)
+ sortie_p([TM,ICEL]                          , grid, 1, levels, 1, steps, 1)      
+
+ sortie_p([MG,2U]        , grid, 1, levels, 1, steps, 3)
+

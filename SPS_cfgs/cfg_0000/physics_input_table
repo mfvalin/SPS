@@ -36,5 +36,4 @@ in=XA;    freq=0; search=ANAL;      interp=near;
 
 in=AD;  freq=0,1; search=INREP;     interp=linear;   timeint=linear
 in=N4;  freq=0,1; search=INREP;     interp=linear;   timeint=linear
-in=PR0; freq=0,1; search=INREP;     interp=linear;   timeint=next
-#in=PR; freq=0,1; search=INREP;     interp=linear;   timeint=increment
+in=PR; freq=0,1; search=INREP;     interp=linear;   timeint=next
