@@ -17,8 +17,8 @@
 
 !/*
 module vgrid_wb
-   use ISO_C_BINDING
    use vGrid_Descriptors
+   use iso_c_binding
    implicit none
    private
    !@objective Whiteboard (data store) for vgrid + ip1 <=> index association

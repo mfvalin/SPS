@@ -15,25 +15,42 @@ in=SLA;   freq=0; search=GEOP;      interp=linear;   levels= 1,4;
 in=AL;    freq=0; search=GEOP,CLIM; interp=near;     timeint=any; #etk=NO SNOW
 
 
-in=TM;    freq=0; search=ANAL;      interp=linear;   timeint=any
+in=TSG;   freq=0; search=ANAL;      interp=linear;   levels= 1,8;
+in=GLD;   freq=0; search=ANAL;      interp=linear;
+in=GLF;   freq=0; search=ANAL;      interp=linear;
+in=GVOL;  freq=0; search=ANAL;      interp=linear;
+in=GVLT;  freq=0; search=ANAL;      interp=linear;
+in=ITGL;  freq=0; search=ANAL;      interp=linear;   levels= 1,16;
+in=TM;    freq=0,1; search=ANAL,INREP;      interp=linear;   timeint=linear
 in=I0;    freq=0; search=ANAL;      interp=near;     levels= 1,2; 
 in=I1;    freq=0; search=ANAL;      interp=near;     levels= 1,2;
-in=I2;    freq=0; search=ANAL;      interp=near;
+in=I2;    freq=0; search=ANAL;      interp=near;     levels= 1,2;
 in=I3;    freq=0; search=ANAL;      interp=near;
 in=I4;    freq=0; search=ANAL;      interp=near;
 in=I6;    freq=0; search=ANAL;      interp=near;
-in=I7;    freq=0; search=ANAL;      interp=linear;   levels= 1,3;\
+in=I7;    freq=0; search=ANAL;      interp=linear;   levels= 1,3;
 in=I8;    freq=0; search=ANAL,CLIM; interp=near;     timeint=linear
 in=I9;    freq=0; search=ANAL;      interp=linear;   levels= 1,2;
 in=DN;    freq=0; search=ANAL;      interp=near;
 in=SD;    freq=0; search=ANAL,CLIM; interp=near;     levels= 1,5; timeint=linear
-in=LG;    freq=0; search=ANAL,CLIM; interp=near;     timeint=linear
+in=LG;    freq=0,1; search=ANAL,INREP; interp=near;     timeint=linear
 
 in=HS;    freq=0; search=ANAL,CLIM; interp=near;     timeint=linear
 in=ICEL;  freq=0; search=ANAL,CLIM; interp=near;     timeint=linear
 in=XA;    freq=0; search=ANAL;      interp=near;
 
 
-in=AD;  freq=0,1; search=INREP;     interp=linear;   timeint=linear
-in=N4;  freq=0,1; search=INREP;     interp=linear;   timeint=linear
-in=PR; freq=0,1; search=INREP;     interp=linear;   timeint=next
+in=AD;  freq=0,1; search=ANAL,INREP;     interp=linear;   timeint=linear
+#in=FI;  freq=0,12; search=ANAL,INREP;     interp=linear;   timeint=linear
+#in=N4;  freq=0,1; search=INREP;     interp=linear;   timeint=linear
+in=N4;  freq=0,1; search=ANAL,INREP;     interp=linear;   timeint=linear
+#in=FB;  freq=0,12; search=ANAL,INREP;     interp=linear;   timeint=linear
+#in=AD;  freq=0,1; search=INREP;     interp=linear;   timeint=linear
+in=PR; freq=0,1; search=ANAL,INREP;     interp=linear;   timeint=next
+#in=PR; freq=0,1; search=INREP;     interp=linear;   timeint=increment
+
+in=MF;   freq=0;   search=GEOP;      interp=linear;
+in=BME;  freq=0;   search=GEOP;      interp=linear;   levels= 1,8;
+in=BFR;  freq=0;   search=GEOP;      interp=linear;   levels= 1,8;
+in=PRSF; freq=0;   search=GEOP;      interp=linear;   levels= 1,12;
+in=GLNM; freq=0;   search=GEOP;      interp=linear;

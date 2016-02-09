@@ -1,16 +1,16 @@
 !-------------------------------------- LICENCE BEGIN ------------------------------------
-!Environment Canada - Atmospheric Science and Technology License/Disclaimer,
+!Environment Canada - Atmospheric Science and Technology License/Disclaimer, 
 !                     version 3; Last Modified: May 7, 2008.
-!This is free but copyrighted software; you can use/redistribute/modify it under the terms
-!of the Environment Canada - Atmospheric Science and Technology License/Disclaimer
-!version 3 or (at your option) any later version that should be found at:
-!http://collaboration.cmc.ec.gc.ca/science/rpn.comm/license.html
+!This is free but copyrighted software; you can use/redistribute/modify it under the terms 
+!of the Environment Canada - Atmospheric Science and Technology License/Disclaimer 
+!version 3 or (at your option) any later version that should be found at: 
+!http://collaboration.cmc.ec.gc.ca/science/rpn.comm/license.html 
 !
-!This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
-!without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+!This software is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+!without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
 !See the above mentioned License/Disclaimer for more details.
-!You should have received a copy of the License/Disclaimer along with this software;
-!if not, you can write to: EC-RPN COMM Group, 2121 TransCanada, suite 500, Dorval (Quebec),
+!You should have received a copy of the License/Disclaimer along with this software; 
+!if not, you can write to: EC-RPN COMM Group, 2121 TransCanada, suite 500, Dorval (Quebec), 
 !CANADA, H9P 1J3; or send e-mail to service.rpn@ec.gc.ca
 !-------------------------------------- LICENCE END --------------------------------------
 !** S/P phybusinit
@@ -348,7 +348,8 @@
                Call gesdict (n, nk, fcpflg,       'VN=fcpflg       ;ON=FF  ;VD=Fritsch-Chappell scheme flag                   ;VS=row                    ;VB=p0')
                Call gesdict (n, nk, fdc,          'VN=fdc          ;ON=CK  ;VD=deep convective clouds                         ;VS=slc                    ;VB=p0')
                Call gesdict (n, nk, fdsi,         'VN=fdsi         ;ON=FI  ;VD=IR energy flux towards ground                  ;VS=row                    ;VB=p0')
- if(offline)   Call gesdict (n, nk, tmp,          'VN=fdsien       ;ON=FIEN;VD=IR energy flux towards ground (offline)        ;VS=row                    ;VB=e1 ;IN=FI')
+! if(offline)   Call gesdict (n, nk, tmp,          'VN=fdsien       ;ON=FIEN;VD=IR energy flux towards ground (offline)        ;VS=row                    ;VB=e1 ;IN=FI')
+ if(offline)   Call gesdict (n, nk, tmp,          'VN=fdsien       ;ON=FIEN;VD=IR energy flux towards ground (offline)        ;VS=row                    ;VB=e1 ;IN=AD')
                Call gesdict (n, nk, fdss,         'VN=fdss         ;ON=FS  ;VD=VIS flux absorbed by ground                    ;VS=row                    ;VB=p0')
                Call gesdict (n, nk, fdss0,        'VN=fdss0        ;ON=F0  ;VD=fdss at mid time interval                      ;VS=row                    ;VB=p0')
                Call gesdict (n, nk, fevp,         'VN=fevp         ;ON=pv  ;VD= evap. of strat. precip (consun)               ;VS=slc                    ;VB=v0')
@@ -367,7 +368,8 @@
                Call gesdict (n, nk, fluslop,      'VN=fluslop      ;ON=FBSL;VD=VIS flux twrds slp ground                      ;VS=row                    ;VB=p0')
                Call gesdict (n, nk, flusolaf,     'VN=flusolaf     ;ON=N4  ;VD=accum. of solar radation                       ;VS=row                    ;VB=p0')
                Call gesdict (n, nk, flusolis,     'VN=flusolis     ;ON=FB  ;VD=VIS flux towards ground                        ;VS=row                    ;VB=p0')
- if(offline)   Call gesdict (n, nk, tmp,          'VN=flusolisen   ;ON=FBEN;VD=VIS flux towards ground (offline)              ;VS=row                    ;VB=e1 ;IN=FB')
+! if(offline)   Call gesdict (n, nk, tmp,          'VN=flusolisen   ;ON=FBEN;VD=VIS flux towards ground (offline)              ;VS=row                    ;VB=e1 ;IN=FB')
+ if(offline)   Call gesdict (n, nk, tmp,          'VN=flusolisen   ;ON=FBEN;VD=VIS flux towards ground (offline)              ;VS=row                    ;VB=e1 ;IN=N4')
                Call gesdict (n, nk, fluxdl,       'VN=fluxdl       ;ON=FLDL;VD=flux down lw                                   ;VS=slc                    ;VB=p0')
                Call gesdict (n, nk, fluxds,       'VN=fluxds       ;ON=flds;VD=flux down sw                                   ;VS=slc                    ;VB=v0')
                Call gesdict (n, nk, fluxds0,      'VN=fluxds0      ;ON=F0DS;VD=flux down sw at mid T                          ;VS=slc                    ;VB=p0')
@@ -676,7 +678,8 @@
                Call gesdict (n, nk, pmoins,       'VN=PW_PM:M      ;ON=P8  ;VD=surface pressure at t-dt                       ;VS=row                    ;VB=d1')
                Call gesdict (n, nk, pplus,        'VN=pplus        ;ON=2P  ;VD=surface pressure at t+dt                       ;VS=row                    ;VB=d0')
                Call gesdict (n, nk, pr,           'VN=pr           ;ON=PR  ;VD=accum. of total precip.                        ;VS=row                    ;VB=v0')
- if(offline)   Call gesdict (n, nk, tmp,          'VN=pren         ;ON=PREN;VD=1h accum. of total precip. (offline)           ;VS=row                    ;VB=e1 ;IN=PR0')
+ if(offline)   Call gesdict (n, nk, tmp,          'VN=pren         ;ON=PREN;VD=1h accum. of total precip. (offline)           ;VS=row                    ;VB=e1 ;IN=PR')
+ !if(offline)   Call gesdict (n, nk, tmp,          'VN=pren         ;ON=PREN;VD=1h accum. of total precip. (offline)           ;VS=row                    ;VB=e1 ;IN=PR0')
  If(lclass)    Call gesdict (n, nk, psiga,        'VN=psiga        ;ON=J3  ;VD=parameter psiga in stomatal resistance         ;VS=row*'//ncv//'@'//nm//' ;VB=p0')
  If(lclass)    Call gesdict (n, nk, psigb,        'VN=psigb        ;ON=D4  ;VD=parameter psigb in stomatal resistance         ;VS=row*'//ncv//'@'//nm//' ;VB=p0')
  If(lclass)    Call gesdict (n, nk, psisat,       'VN=psisat       ;ON=D5  ;VD=sat. soil water suction                        ;VS=row*'//ncg//'@'//nm//' ;VB=p0')
@@ -894,7 +897,7 @@
  If(lclass)    Call gesdict (n, nk, tbaseen,      'VN=tbaseen      ;ON=R5  ;VD=temp. at the base of soil water column (E)     ;VS=row                    ;VB=e1;IN=R2  ;')
  If(lclass)    Call gesdict (n, nk, tbasfl,       'VN=tbasfl       ;ON=STBF;VD=temperature of baseflow                        ;VS=row@'//nm//'           ;VB=v0')
  If(lteb)      Call gesdict (n, nk, tc_road,      'VN=tc_road      ;ON=TCRD;VD=road thermal condcutivities                    ;VS=row*3                  ;VB=p0')
- If(lteb)      Call gesdict (n, nk, tc_roaden,    'VN=tc_roaden    ;ON=TB22;VD=road thermal condcutivities (E)                ;VS=row*3                  ;VB=e1; IN=TCRD;')
+ If(lteb)      Call gesdict (n, nk, tc_roaden,    'VN=tc_roaden    ;ON=TB22;VD=road thermal condcutivities (E)                ;VS=row*3                  ;VB=e1; IN=TCRD;') 
  If(lteb)      Call gesdict (n, nk, tc_roof,      'VN=tc_roof      ;ON=TCRF;VD=roof thermal condcutivities                    ;VS=row*3                  ;VB=p0')
  If(lteb)      Call gesdict (n, nk, tc_roofen,    'VN=tc_roofen    ;ON=TB23;VD=roof thermal condcutivities (E)                ;VS=row*3                  ;VB=e1; IN=TCRF;')
  If(lteb)      Call gesdict (n, nk, tc_wall,      'VN=tc_wall      ;ON=TCWL;VD=wall thermal condcutivities                    ;VS=row*3                  ;VB=p0')
@@ -1167,8 +1170,8 @@
  !
  !   Add chemistry variables to appropriate buses
  !
- !
+ ! 
      call chm_businit(n,nk)
  !
-
+ 
      End Subroutine phybusinit

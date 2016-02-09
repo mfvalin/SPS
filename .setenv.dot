@@ -1,4 +1,5 @@
-. s.ssmuse.dot GEM/x/4.6.2_ifort14 rde_1.1.0 sps_1.1.0.1_all@SPS_v_1.1.0 python-2.7.7 task-setup model_data
+#. s.ssmuse.dot GEM/x/4.6.2_ifort14 rde_1.1.0 sps_1.1.0.1_all@SPS_v_1.1.0 python-2.7.7 task-setup model_data
+. s.ssmuse.dot GEM/x/4.6.2_ifort14 rde_1.1.0 sps/1.1.0.2
 [[ -z $COMP_ARCH ]] && echo ERROR: COMP_ARCH is not defined && return
 echo "USING: COMP_ARCH=$COMP_ARCH"
 

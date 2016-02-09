@@ -1,8 +1,8 @@
 cat <<EOT >.exper_cour
 SRCPATH="
 $modelutils/src/include 
-$(pwd -P)/include 
-$(pwd -P)/src_sps_base 
+$sps_source/include 
+$sps_source/src/base 
 $modelutils/src/base
 $modelutils/src/driver
 $modelutils/src/main
