@@ -15,7 +15,7 @@
 
 !/*
 module fstmpi_write_mod
-   use ISO_C_BINDING
+   use iso_c_binding
    use fst_mod
    use ezgrid_mod
    use ptopo_utils

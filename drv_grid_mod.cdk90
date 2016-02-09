@@ -9,7 +9,7 @@
 
 !/**
 module drv_grid_mod
-   use ISO_C_BINDING
+   use iso_c_binding
    use config_mod
    use ptopo_utils
    use hgrid_wb

@@ -17,7 +17,7 @@
 
 !/@*
 module vgrid_from_file_mod
-   use ISO_C_BINDING
+   use iso_c_binding
    use VGrid_Descriptors
    use vgrid_wb
    use sort_mod
